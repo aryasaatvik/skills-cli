@@ -21,20 +21,26 @@ export interface RemoveOptions {
 }
 
 export async function removeCommand(skillNames: string[], options: RemoveOptions) {
-  const isGlobal = options.global ?? false;
   const cwd = process.cwd();
 
   const spinner = p.spinner();
 
   spinner.start('Scanning for installed skills...');
   const skillNamesSet = new Set<string>();
+  // Track which scope each skill was found in (true = global, false = project)
+  const skillScopeMap = new Map<string, boolean>();
 
-  const scanDir = async (dir: string) => {
+  const scanDir = async (dir: string, isGlobalScope: boolean) => {
     try {
       const entries = await readdir(dir, { withFileTypes: true });
       for (const entry of entries) {
         if (entry.isDirectory()) {
           skillNamesSet.add(entry.name);
+          // If skill already exists in map, keep it as global if any scan found it globally
+          const existingScope = skillScopeMap.get(entry.name);
+          if (existingScope === undefined || (existingScope === false && isGlobalScope)) {
+            skillScopeMap.set(entry.name, isGlobalScope);
+          }
         }
       }
     } catch (err) {
@@ -44,17 +50,23 @@ export async function removeCommand(skillNames: string[], options: RemoveOptions
     }
   };
 
-  if (isGlobal) {
-    await scanDir(getCanonicalSkillsDir(true, cwd));
+  // When options.global is undefined, scan both scopes like list command does
+  const shouldScanGlobal = options.global === undefined || options.global === true;
+  const shouldScanProject = options.global === undefined || options.global === false;
+
+  if (shouldScanGlobal) {
+    await scanDir(getCanonicalSkillsDir(true, cwd), true);
     for (const agent of Object.values(agents)) {
       if (agent.globalSkillsDir !== undefined) {
-        await scanDir(agent.globalSkillsDir);
+        await scanDir(agent.globalSkillsDir, true);
       }
     }
-  } else {
-    await scanDir(getCanonicalSkillsDir(false, cwd));
+  }
+
+  if (shouldScanProject) {
+    await scanDir(getCanonicalSkillsDir(false, cwd), false);
     for (const agent of Object.values(agents)) {
-      await scanDir(join(cwd, agent.skillsDir));
+      await scanDir(join(cwd, agent.skillsDir), false);
     }
   }
 
@@ -150,6 +162,9 @@ export async function removeCommand(skillNames: string[], options: RemoveOptions
   }[] = [];
 
   for (const skillName of selectedSkills) {
+    // Use the detected scope for this skill, default to project scope if not found
+    const isGlobal = skillScopeMap.get(skillName) ?? false;
+
     try {
       const canonicalPath = getCanonicalPath(skillName, { global: isGlobal, cwd });
 
@@ -238,13 +253,17 @@ export async function removeCommand(skillNames: string[], options: RemoveOptions
 
   // Track removal (grouped by source)
   if (successful.length > 0) {
-    const bySource = new Map<string, { skills: string[]; sourceType?: string }>();
+    const bySource = new Map<string, { skills: string[]; sourceType?: string; isGlobal?: boolean }>();
 
     for (const r of successful) {
       const source = r.source || 'local';
       const existing = bySource.get(source) || { skills: [] };
       existing.skills.push(r.skill);
       existing.sourceType = r.sourceType;
+      // Track if any of the removed skills were global
+      if (skillScopeMap.get(r.skill)) {
+        existing.isGlobal = true;
+      }
       bySource.set(source, existing);
     }
 
@@ -254,7 +273,7 @@ export async function removeCommand(skillNames: string[], options: RemoveOptions
         source,
         skills: data.skills.join(','),
         agents: targetAgents.join(','),
-        ...(isGlobal && { global: '1' }),
+        ...(data.isGlobal && { global: '1' }),
         sourceType: data.sourceType,
       });
     }
