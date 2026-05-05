@@ -252,6 +252,7 @@ function buildResultLines(
   results: Array<{
     agent: string;
     symlinkFailed?: boolean;
+    skipped?: boolean;
   }>,
   targetAgents: AgentType[]
 ): string[] {
@@ -261,10 +262,11 @@ function buildResultLines(
   const { universal, symlinked: symlinkAgents } = splitAgentsByType(targetAgents);
 
   // For symlink results, also track which ones actually succeeded vs failed
+  // Exclude skipped agents (those whose config dir doesn't exist in the project)
   const successfulSymlinks = results
-    .filter((r) => !r.symlinkFailed && !universal.includes(r.agent))
+    .filter((r) => !r.symlinkFailed && !r.skipped && !universal.includes(r.agent))
     .map((r) => r.agent);
-  const failedSymlinks = results.filter((r) => r.symlinkFailed).map((r) => r.agent);
+  const failedSymlinks = results.filter((r) => r.symlinkFailed && !r.skipped).map((r) => r.agent);
 
   if (universal.length > 0) {
     lines.push(`  ${pc.green('universal:')} ${formatList(universal)}`);
