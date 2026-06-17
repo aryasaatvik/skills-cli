@@ -4844,25 +4844,32 @@ async function removeCommand(skillNames, options) {
 		options.yes = true;
 		M.info(import_picocolors.default.bgCyan(import_picocolors.default.black(import_picocolors.default.bold(` ${agentResult.agent.name} `))) + " Agent detected — removing non-interactively");
 	}
-	const isGlobal = options.global ?? false;
 	const cwd = process.cwd();
 	const spinner = Y();
 	spinner.start("Scanning for installed skills...");
 	const skillNamesSet = /* @__PURE__ */ new Set();
-	const scanDir = async (dir) => {
+	const skillScopeMap = /* @__PURE__ */ new Map();
+	const scanDir = async (dir, isGlobalScope) => {
 		try {
 			const entries = await readdir(dir, { withFileTypes: true });
-			for (const entry of entries) if (entry.isDirectory()) skillNamesSet.add(entry.name);
+			for (const entry of entries) if (entry.isDirectory()) {
+				skillNamesSet.add(entry.name);
+				const existingScope = skillScopeMap.get(entry.name);
+				if (existingScope === void 0 || existingScope === false && isGlobalScope) skillScopeMap.set(entry.name, isGlobalScope);
+			}
 		} catch (err) {
 			if (err instanceof Error && err.code !== "ENOENT") M.warn(`Could not scan directory ${dir}: ${err.message}`);
 		}
 	};
-	if (isGlobal) {
-		await scanDir(getCanonicalSkillsDir(true, cwd));
-		for (const agent of Object.values(agents)) if (agent.globalSkillsDir !== void 0) await scanDir(agent.globalSkillsDir);
-	} else {
-		await scanDir(getCanonicalSkillsDir(false, cwd));
-		for (const agent of Object.values(agents)) await scanDir(join(cwd, agent.skillsDir));
+	const shouldScanGlobal = options.global === void 0 || options.global === true;
+	const shouldScanProject = options.global === void 0 || options.global === false;
+	if (shouldScanGlobal) {
+		await scanDir(getCanonicalSkillsDir(true, cwd), true);
+		for (const agent of Object.values(agents)) if (agent.globalSkillsDir !== void 0) await scanDir(agent.globalSkillsDir, true);
+	}
+	if (shouldScanProject) {
+		await scanDir(getCanonicalSkillsDir(false, cwd), false);
+		for (const agent of Object.values(agents)) await scanDir(join(cwd, agent.skillsDir), false);
 	}
 	const installedSkills = Array.from(skillNamesSet).sort();
 	spinner.stop(`Found ${installedSkills.length} unique installed skill(s)`);
@@ -4922,62 +4929,65 @@ async function removeCommand(skillNames, options) {
 	}
 	spinner.start("Removing skills...");
 	const results = [];
-	for (const skillName of selectedSkills) try {
-		const canonicalPath = getCanonicalPath(skillName, {
-			global: isGlobal,
-			cwd
-		});
-		for (const agentKey of targetAgents) {
-			const agent = agents[agentKey];
-			const skillPath = getInstallPath(skillName, agentKey, {
+	for (const skillName of selectedSkills) {
+		const isGlobal = skillScopeMap.get(skillName) ?? false;
+		try {
+			const canonicalPath = getCanonicalPath(skillName, {
 				global: isGlobal,
 				cwd
 			});
-			const pathsToCleanup = new Set([skillPath]);
-			const sanitizedName = sanitizeName(skillName);
-			if (isGlobal && agent.globalSkillsDir) pathsToCleanup.add(join(agent.globalSkillsDir, sanitizedName));
-			else pathsToCleanup.add(join(cwd, agent.skillsDir, sanitizedName));
-			for (const pathToCleanup of pathsToCleanup) {
-				if (pathToCleanup === canonicalPath) continue;
-				try {
-					if (await lstat(pathToCleanup).catch(() => null)) await rm(pathToCleanup, {
-						recursive: true,
-						force: true
-					});
-				} catch (err) {
-					M.warn(`Could not remove skill from ${agent.displayName}: ${err instanceof Error ? err.message : String(err)}`);
+			for (const agentKey of targetAgents) {
+				const agent = agents[agentKey];
+				const skillPath = getInstallPath(skillName, agentKey, {
+					global: isGlobal,
+					cwd
+				});
+				const pathsToCleanup = new Set([skillPath]);
+				const sanitizedName = sanitizeName(skillName);
+				if (isGlobal && agent.globalSkillsDir) pathsToCleanup.add(join(agent.globalSkillsDir, sanitizedName));
+				else pathsToCleanup.add(join(cwd, agent.skillsDir, sanitizedName));
+				for (const pathToCleanup of pathsToCleanup) {
+					if (pathToCleanup === canonicalPath) continue;
+					try {
+						if (await lstat(pathToCleanup).catch(() => null)) await rm(pathToCleanup, {
+							recursive: true,
+							force: true
+						});
+					} catch (err) {
+						M.warn(`Could not remove skill from ${agent.displayName}: ${err instanceof Error ? err.message : String(err)}`);
+					}
 				}
 			}
+			const remainingAgents = (await detectInstalledAgents()).filter((a) => !targetAgents.includes(a));
+			let isStillUsed = false;
+			for (const agentKey of remainingAgents) if (await lstat(getInstallPath(skillName, agentKey, {
+				global: isGlobal,
+				cwd
+			})).catch(() => null)) {
+				isStillUsed = true;
+				break;
+			}
+			if (!isStillUsed) await rm(canonicalPath, {
+				recursive: true,
+				force: true
+			});
+			const lockEntry = isGlobal ? await getSkillFromLock(skillName) : null;
+			const effectiveSource = lockEntry?.source || "local";
+			const effectiveSourceType = lockEntry?.sourceType || "local";
+			if (isGlobal) await removeSkillFromLock(skillName);
+			results.push({
+				skill: skillName,
+				success: true,
+				source: effectiveSource,
+				sourceType: effectiveSourceType
+			});
+		} catch (err) {
+			results.push({
+				skill: skillName,
+				success: false,
+				error: err instanceof Error ? err.message : String(err)
+			});
 		}
-		const remainingAgents = (await detectInstalledAgents()).filter((a) => !targetAgents.includes(a));
-		let isStillUsed = false;
-		for (const agentKey of remainingAgents) if (await lstat(getInstallPath(skillName, agentKey, {
-			global: isGlobal,
-			cwd
-		})).catch(() => null)) {
-			isStillUsed = true;
-			break;
-		}
-		if (!isStillUsed) await rm(canonicalPath, {
-			recursive: true,
-			force: true
-		});
-		const lockEntry = isGlobal ? await getSkillFromLock(skillName) : null;
-		const effectiveSource = lockEntry?.source || "local";
-		const effectiveSourceType = lockEntry?.sourceType || "local";
-		if (isGlobal) await removeSkillFromLock(skillName);
-		results.push({
-			skill: skillName,
-			success: true,
-			source: effectiveSource,
-			sourceType: effectiveSourceType
-		});
-	} catch (err) {
-		results.push({
-			skill: skillName,
-			success: false,
-			error: err instanceof Error ? err.message : String(err)
-		});
 	}
 	spinner.stop("Removal process complete");
 	const successful = results.filter((r) => r.success);
@@ -4989,6 +4999,7 @@ async function removeCommand(skillNames, options) {
 			const existing = bySource.get(source) || { skills: [] };
 			existing.skills.push(r.skill);
 			existing.sourceType = r.sourceType;
+			if (skillScopeMap.get(r.skill)) existing.isGlobal = true;
 			bySource.set(source, existing);
 		}
 		for (const [source, data] of bySource) track({
@@ -4996,7 +5007,7 @@ async function removeCommand(skillNames, options) {
 			source,
 			skills: data.skills.join(","),
 			agents: targetAgents.join(","),
-			...isGlobal && { global: "1" },
+			...data.isGlobal && { global: "1" },
 			sourceType: data.sourceType
 		});
 	}
