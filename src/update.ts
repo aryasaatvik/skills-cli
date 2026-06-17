@@ -7,11 +7,7 @@ import pc from 'picocolors';
 
 import { readSkillLock, getGitHubToken, type SkillLockEntry } from './skill-lock.ts';
 import { computeSkillFolderHash, readLocalLock, type LocalSkillLockEntry } from './local-lock.ts';
-import {
-  formatSourceInput,
-  buildUpdateInstallSource,
-  buildLocalUpdateSource,
-} from './update-source.ts';
+import { formatSourceInput, buildLocalUpdateSource } from './update-source.ts';
 import { cloneRepo, cleanupTempDir } from './git.ts';
 import { discoverSkills } from './skills.ts';
 import { fetchRepoTree, findSkillMdPaths, getSkillFolderHashFromTree } from './blob.ts';
@@ -443,7 +439,13 @@ export async function updateGlobalSkills(
   for (const update of updates) {
     const safeName = sanitizeMetadata(update.name);
     console.log(`${TEXT}Updating ${safeName}...${RESET}`);
-    const installUrl = buildUpdateInstallSource(update.entry);
+    // Scope the update to this exact skill by name, and install from the bare
+    // source (not a subpath-appended URL — that breaks for SSH/.git sources and
+    // falls back to a full-catalog add). Without `--skill`, `add` re-discovers
+    // every skill in the source repo (deep `skills/` walk + plugin manifest) and
+    // re-installs the lot, re-expanding a curated global set. Mirror the
+    // project-update path, which already does this correctly.
+    const installUrl = formatSourceInput(update.entry.source, update.entry.ref);
 
     const cliEntry = join(__dirname, '..', 'bin', 'cli.mjs');
     if (!existsSync(cliEntry)) {
@@ -453,11 +455,15 @@ export async function updateGlobalSkills(
       );
       continue;
     }
-    const result = spawnSync(process.execPath, [cliEntry, 'add', installUrl, '-g', '-y'], {
-      stdio: ['inherit', 'pipe', 'pipe'],
-      encoding: 'utf-8',
-      shell: process.platform === 'win32',
-    });
+    const result = spawnSync(
+      process.execPath,
+      [cliEntry, 'add', installUrl, '--skill', update.name, '-g', '-y'],
+      {
+        stdio: ['inherit', 'pipe', 'pipe'],
+        encoding: 'utf-8',
+        shell: process.platform === 'win32',
+      }
+    );
 
     if (result.status === 0) {
       successCount++;
