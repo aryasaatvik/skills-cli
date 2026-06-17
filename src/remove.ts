@@ -6,6 +6,7 @@ import { agents, detectInstalledAgents } from './agents.ts';
 import { track } from './telemetry.ts';
 import { detectAgent } from './detect-agent.ts';
 import { removeSkillFromLock, getSkillFromLock } from './skill-lock.ts';
+import { hasProjectSkills } from './update.ts';
 import type { AgentType } from './types.ts';
 import {
   getInstallPath,
@@ -16,9 +17,50 @@ import {
 
 export interface RemoveOptions {
   global?: boolean;
+  project?: boolean;
   agent?: string[];
   yes?: boolean;
   all?: boolean;
+}
+
+type RemoveScope = 'project' | 'global' | 'both';
+
+/**
+ * Resolve which scope(s) to remove from. Explicit flags win; `--all` spans both;
+ * otherwise prompt interactively (Project / Global / Both). When non-interactive
+ * (AI agent, `-y`, or no TTY) we cannot prompt, so default to the scope that has
+ * skills, preferring project when present — matching `skills update`. Removal is
+ * destructive, so we never silently guess across scopes for an interactive user.
+ */
+async function resolveRemoveScope(options: RemoveOptions, cwd: string): Promise<RemoveScope> {
+  if (options.global && options.project) return 'both';
+  if (options.global) return 'global';
+  if (options.project) return 'project';
+  if (options.all) return 'both';
+
+  if (options.yes || !process.stdin.isTTY) {
+    return hasProjectSkills(cwd) ? 'project' : 'global';
+  }
+
+  const scope = await p.select({
+    message: 'Remove from scope',
+    options: [
+      {
+        value: 'project' as RemoveScope,
+        label: 'Project',
+        hint: 'Skills in the current directory',
+      },
+      { value: 'global' as RemoveScope, label: 'Global', hint: 'Skills in your home directory' },
+      { value: 'both' as RemoveScope, label: 'Both', hint: 'Project and global' },
+    ],
+  });
+
+  if (p.isCancel(scope)) {
+    p.cancel('Removal cancelled');
+    process.exit(0);
+  }
+
+  return scope as RemoveScope;
 }
 
 export async function removeCommand(skillNames: string[], options: RemoveOptions) {
@@ -34,6 +76,9 @@ export async function removeCommand(skillNames: string[], options: RemoveOptions
   }
 
   const cwd = process.cwd();
+
+  // Resolve scope before starting the spinner so an interactive prompt isn't obscured.
+  const scope = await resolveRemoveScope(options, cwd);
 
   const spinner = p.spinner();
 
@@ -62,9 +107,8 @@ export async function removeCommand(skillNames: string[], options: RemoveOptions
     }
   };
 
-  // When options.global is undefined, scan both scopes like list command does
-  const shouldScanGlobal = options.global === undefined || options.global === true;
-  const shouldScanProject = options.global === undefined || options.global === false;
+  const shouldScanGlobal = scope === 'global' || scope === 'both';
+  const shouldScanProject = scope === 'project' || scope === 'both';
 
   if (shouldScanGlobal) {
     await scanDir(getCanonicalSkillsDir(true, cwd), true);
@@ -265,7 +309,10 @@ export async function removeCommand(skillNames: string[], options: RemoveOptions
 
   // Track removal (grouped by source)
   if (successful.length > 0) {
-    const bySource = new Map<string, { skills: string[]; sourceType?: string; isGlobal?: boolean }>();
+    const bySource = new Map<
+      string,
+      { skills: string[]; sourceType?: string; isGlobal?: boolean }
+    >();
 
     for (const r of successful) {
       const source = r.source || 'local';
@@ -319,6 +366,8 @@ export function parseRemoveOptions(args: string[]): { skills: string[]; options:
 
     if (arg === '-g' || arg === '--global') {
       options.global = true;
+    } else if (arg === '-p' || arg === '--project') {
+      options.project = true;
     } else if (arg === '-y' || arg === '--yes') {
       options.yes = true;
     } else if (arg === '--all') {

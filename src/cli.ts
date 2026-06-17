@@ -148,6 +148,7 @@ ${BOLD}Use Options:${RESET}
 
 ${BOLD}Remove Options:${RESET}
   -g, --global           Remove from global scope
+  -p, --project          Remove from project scope
   -a, --agent <agents>   Remove from specific agents (use '*' for all agents)
   -s, --skill <skills>   Specify skills to remove (use '*' for all skills)
   -y, --yes              Skip confirmation prompts
@@ -206,7 +207,8 @@ ${BOLD}Arguments:${RESET}
   skills            Optional skill names to remove (space-separated)
 
 ${BOLD}Options:${RESET}
-  -g, --global       Remove from global scope (~/) instead of project scope
+  -g, --global       Remove from global scope (~/)
+  -p, --project      Remove from project scope (./)
   -a, --agent        Remove from specific agents (use '*' for all agents)
   -s, --skill        Specify skills to remove (use '*' for all skills)
   -y, --yes          Skip confirmation prompts

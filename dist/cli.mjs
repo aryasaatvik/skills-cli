@@ -4838,212 +4838,6 @@ async function runList(args) {
 		console.log();
 	}
 }
-async function removeCommand(skillNames, options) {
-	const agentResult = await detectAgent();
-	if (agentResult.isAgent) {
-		options.yes = true;
-		M.info(import_picocolors.default.bgCyan(import_picocolors.default.black(import_picocolors.default.bold(` ${agentResult.agent.name} `))) + " Agent detected — removing non-interactively");
-	}
-	const cwd = process.cwd();
-	const spinner = Y();
-	spinner.start("Scanning for installed skills...");
-	const skillNamesSet = /* @__PURE__ */ new Set();
-	const skillScopeMap = /* @__PURE__ */ new Map();
-	const scanDir = async (dir, isGlobalScope) => {
-		try {
-			const entries = await readdir(dir, { withFileTypes: true });
-			for (const entry of entries) if (entry.isDirectory()) {
-				skillNamesSet.add(entry.name);
-				const existingScope = skillScopeMap.get(entry.name);
-				if (existingScope === void 0 || existingScope === false && isGlobalScope) skillScopeMap.set(entry.name, isGlobalScope);
-			}
-		} catch (err) {
-			if (err instanceof Error && err.code !== "ENOENT") M.warn(`Could not scan directory ${dir}: ${err.message}`);
-		}
-	};
-	const shouldScanGlobal = options.global === void 0 || options.global === true;
-	const shouldScanProject = options.global === void 0 || options.global === false;
-	if (shouldScanGlobal) {
-		await scanDir(getCanonicalSkillsDir(true, cwd), true);
-		for (const agent of Object.values(agents)) if (agent.globalSkillsDir !== void 0) await scanDir(agent.globalSkillsDir, true);
-	}
-	if (shouldScanProject) {
-		await scanDir(getCanonicalSkillsDir(false, cwd), false);
-		for (const agent of Object.values(agents)) await scanDir(join(cwd, agent.skillsDir), false);
-	}
-	const installedSkills = Array.from(skillNamesSet).sort();
-	spinner.stop(`Found ${installedSkills.length} unique installed skill(s)`);
-	if (installedSkills.length === 0) {
-		Se(import_picocolors.default.yellow("No skills found to remove."));
-		return;
-	}
-	if (options.agent && options.agent.length > 0) {
-		const validAgents = Object.keys(agents);
-		const invalidAgents = options.agent.filter((a) => !validAgents.includes(a));
-		if (invalidAgents.length > 0) {
-			M.error(`Invalid agents: ${invalidAgents.join(", ")}`);
-			M.info(`Valid agents: ${validAgents.join(", ")}`);
-			process.exit(1);
-		}
-	}
-	let selectedSkills = [];
-	if (options.all) selectedSkills = installedSkills;
-	else if (skillNames.length > 0) {
-		selectedSkills = installedSkills.filter((s) => skillNames.some((name) => name.toLowerCase() === s.toLowerCase()));
-		if (selectedSkills.length === 0) {
-			M.error(`No matching skills found for: ${skillNames.join(", ")}`);
-			return;
-		}
-	} else {
-		const choices = installedSkills.map((s) => ({
-			value: s,
-			label: s
-		}));
-		const selected = await fe({
-			message: `Select skills to remove ${import_picocolors.default.dim("(space to toggle)")}`,
-			options: choices,
-			required: true
-		});
-		if (pD(selected)) {
-			xe("Removal cancelled");
-			process.exit(0);
-		}
-		selectedSkills = selected;
-	}
-	let targetAgents;
-	if (options.agent && options.agent.length > 0) targetAgents = options.agent;
-	else {
-		targetAgents = Object.keys(agents);
-		spinner.stop(`Targeting ${targetAgents.length} potential agent(s)`);
-	}
-	if (!options.yes) {
-		console.log();
-		M.info("Skills to remove:");
-		for (const skill of selectedSkills) M.message(`  ${import_picocolors.default.red("•")} ${skill}`);
-		console.log();
-		const confirmed = await ye({ message: `Are you sure you want to uninstall ${selectedSkills.length} skill(s)?` });
-		if (pD(confirmed) || !confirmed) {
-			xe("Removal cancelled");
-			process.exit(0);
-		}
-	}
-	spinner.start("Removing skills...");
-	const results = [];
-	for (const skillName of selectedSkills) {
-		const isGlobal = skillScopeMap.get(skillName) ?? false;
-		try {
-			const canonicalPath = getCanonicalPath(skillName, {
-				global: isGlobal,
-				cwd
-			});
-			for (const agentKey of targetAgents) {
-				const agent = agents[agentKey];
-				const skillPath = getInstallPath(skillName, agentKey, {
-					global: isGlobal,
-					cwd
-				});
-				const pathsToCleanup = new Set([skillPath]);
-				const sanitizedName = sanitizeName(skillName);
-				if (isGlobal && agent.globalSkillsDir) pathsToCleanup.add(join(agent.globalSkillsDir, sanitizedName));
-				else pathsToCleanup.add(join(cwd, agent.skillsDir, sanitizedName));
-				for (const pathToCleanup of pathsToCleanup) {
-					if (pathToCleanup === canonicalPath) continue;
-					try {
-						if (await lstat(pathToCleanup).catch(() => null)) await rm(pathToCleanup, {
-							recursive: true,
-							force: true
-						});
-					} catch (err) {
-						M.warn(`Could not remove skill from ${agent.displayName}: ${err instanceof Error ? err.message : String(err)}`);
-					}
-				}
-			}
-			const remainingAgents = (await detectInstalledAgents()).filter((a) => !targetAgents.includes(a));
-			let isStillUsed = false;
-			for (const agentKey of remainingAgents) if (await lstat(getInstallPath(skillName, agentKey, {
-				global: isGlobal,
-				cwd
-			})).catch(() => null)) {
-				isStillUsed = true;
-				break;
-			}
-			if (!isStillUsed) await rm(canonicalPath, {
-				recursive: true,
-				force: true
-			});
-			const lockEntry = isGlobal ? await getSkillFromLock(skillName) : null;
-			const effectiveSource = lockEntry?.source || "local";
-			const effectiveSourceType = lockEntry?.sourceType || "local";
-			if (isGlobal) await removeSkillFromLock(skillName);
-			results.push({
-				skill: skillName,
-				success: true,
-				source: effectiveSource,
-				sourceType: effectiveSourceType
-			});
-		} catch (err) {
-			results.push({
-				skill: skillName,
-				success: false,
-				error: err instanceof Error ? err.message : String(err)
-			});
-		}
-	}
-	spinner.stop("Removal process complete");
-	const successful = results.filter((r) => r.success);
-	const failed = results.filter((r) => !r.success);
-	if (successful.length > 0) {
-		const bySource = /* @__PURE__ */ new Map();
-		for (const r of successful) {
-			const source = r.source || "local";
-			const existing = bySource.get(source) || { skills: [] };
-			existing.skills.push(r.skill);
-			existing.sourceType = r.sourceType;
-			if (skillScopeMap.get(r.skill)) existing.isGlobal = true;
-			bySource.set(source, existing);
-		}
-		for (const [source, data] of bySource) track({
-			event: "remove",
-			source,
-			skills: data.skills.join(","),
-			agents: targetAgents.join(","),
-			...data.isGlobal && { global: "1" },
-			sourceType: data.sourceType
-		});
-	}
-	if (successful.length > 0) M.success(import_picocolors.default.green(`Successfully removed ${successful.length} skill(s)`));
-	if (failed.length > 0) {
-		M.error(import_picocolors.default.red(`Failed to remove ${failed.length} skill(s)`));
-		for (const r of failed) M.message(`  ${import_picocolors.default.red("✗")} ${r.skill}: ${r.error}`);
-	}
-	console.log();
-	Se(import_picocolors.default.green("Done!"));
-}
-function parseRemoveOptions(args) {
-	const options = {};
-	const skills = [];
-	for (let i = 0; i < args.length; i++) {
-		const arg = args[i];
-		if (arg === "-g" || arg === "--global") options.global = true;
-		else if (arg === "-y" || arg === "--yes") options.yes = true;
-		else if (arg === "--all") options.all = true;
-		else if (arg === "-a" || arg === "--agent") {
-			options.agent = options.agent || [];
-			i++;
-			let nextArg = args[i];
-			while (i < args.length && nextArg && !nextArg.startsWith("-")) {
-				options.agent.push(nextArg);
-				i++;
-				nextArg = args[i];
-			}
-			i--;
-		} else if (arg && !arg.startsWith("-")) skills.push(arg);
-	}
-	return {
-		skills,
-		options
-	};
-}
 function formatSourceInput(sourceUrl, ref) {
 	if (!ref) return sourceUrl;
 	return `${sourceUrl}#${ref}`;
@@ -5515,6 +5309,246 @@ async function runUpdate(args = []) {
 	});
 	console.log();
 }
+async function resolveRemoveScope(options, cwd) {
+	if (options.global && options.project) return "both";
+	if (options.global) return "global";
+	if (options.project) return "project";
+	if (options.all) return "both";
+	if (options.yes || !process.stdin.isTTY) return hasProjectSkills(cwd) ? "project" : "global";
+	const scope = await ve({
+		message: "Remove from scope",
+		options: [
+			{
+				value: "project",
+				label: "Project",
+				hint: "Skills in the current directory"
+			},
+			{
+				value: "global",
+				label: "Global",
+				hint: "Skills in your home directory"
+			},
+			{
+				value: "both",
+				label: "Both",
+				hint: "Project and global"
+			}
+		]
+	});
+	if (pD(scope)) {
+		xe("Removal cancelled");
+		process.exit(0);
+	}
+	return scope;
+}
+async function removeCommand(skillNames, options) {
+	const agentResult = await detectAgent();
+	if (agentResult.isAgent) {
+		options.yes = true;
+		M.info(import_picocolors.default.bgCyan(import_picocolors.default.black(import_picocolors.default.bold(` ${agentResult.agent.name} `))) + " Agent detected — removing non-interactively");
+	}
+	const cwd = process.cwd();
+	const scope = await resolveRemoveScope(options, cwd);
+	const spinner = Y();
+	spinner.start("Scanning for installed skills...");
+	const skillNamesSet = /* @__PURE__ */ new Set();
+	const skillScopeMap = /* @__PURE__ */ new Map();
+	const scanDir = async (dir, isGlobalScope) => {
+		try {
+			const entries = await readdir(dir, { withFileTypes: true });
+			for (const entry of entries) if (entry.isDirectory()) {
+				skillNamesSet.add(entry.name);
+				const existingScope = skillScopeMap.get(entry.name);
+				if (existingScope === void 0 || existingScope === false && isGlobalScope) skillScopeMap.set(entry.name, isGlobalScope);
+			}
+		} catch (err) {
+			if (err instanceof Error && err.code !== "ENOENT") M.warn(`Could not scan directory ${dir}: ${err.message}`);
+		}
+	};
+	const shouldScanGlobal = scope === "global" || scope === "both";
+	const shouldScanProject = scope === "project" || scope === "both";
+	if (shouldScanGlobal) {
+		await scanDir(getCanonicalSkillsDir(true, cwd), true);
+		for (const agent of Object.values(agents)) if (agent.globalSkillsDir !== void 0) await scanDir(agent.globalSkillsDir, true);
+	}
+	if (shouldScanProject) {
+		await scanDir(getCanonicalSkillsDir(false, cwd), false);
+		for (const agent of Object.values(agents)) await scanDir(join(cwd, agent.skillsDir), false);
+	}
+	const installedSkills = Array.from(skillNamesSet).sort();
+	spinner.stop(`Found ${installedSkills.length} unique installed skill(s)`);
+	if (installedSkills.length === 0) {
+		Se(import_picocolors.default.yellow("No skills found to remove."));
+		return;
+	}
+	if (options.agent && options.agent.length > 0) {
+		const validAgents = Object.keys(agents);
+		const invalidAgents = options.agent.filter((a) => !validAgents.includes(a));
+		if (invalidAgents.length > 0) {
+			M.error(`Invalid agents: ${invalidAgents.join(", ")}`);
+			M.info(`Valid agents: ${validAgents.join(", ")}`);
+			process.exit(1);
+		}
+	}
+	let selectedSkills = [];
+	if (options.all) selectedSkills = installedSkills;
+	else if (skillNames.length > 0) {
+		selectedSkills = installedSkills.filter((s) => skillNames.some((name) => name.toLowerCase() === s.toLowerCase()));
+		if (selectedSkills.length === 0) {
+			M.error(`No matching skills found for: ${skillNames.join(", ")}`);
+			return;
+		}
+	} else {
+		const choices = installedSkills.map((s) => ({
+			value: s,
+			label: s
+		}));
+		const selected = await fe({
+			message: `Select skills to remove ${import_picocolors.default.dim("(space to toggle)")}`,
+			options: choices,
+			required: true
+		});
+		if (pD(selected)) {
+			xe("Removal cancelled");
+			process.exit(0);
+		}
+		selectedSkills = selected;
+	}
+	let targetAgents;
+	if (options.agent && options.agent.length > 0) targetAgents = options.agent;
+	else {
+		targetAgents = Object.keys(agents);
+		spinner.stop(`Targeting ${targetAgents.length} potential agent(s)`);
+	}
+	if (!options.yes) {
+		console.log();
+		M.info("Skills to remove:");
+		for (const skill of selectedSkills) M.message(`  ${import_picocolors.default.red("•")} ${skill}`);
+		console.log();
+		const confirmed = await ye({ message: `Are you sure you want to uninstall ${selectedSkills.length} skill(s)?` });
+		if (pD(confirmed) || !confirmed) {
+			xe("Removal cancelled");
+			process.exit(0);
+		}
+	}
+	spinner.start("Removing skills...");
+	const results = [];
+	for (const skillName of selectedSkills) {
+		const isGlobal = skillScopeMap.get(skillName) ?? false;
+		try {
+			const canonicalPath = getCanonicalPath(skillName, {
+				global: isGlobal,
+				cwd
+			});
+			for (const agentKey of targetAgents) {
+				const agent = agents[agentKey];
+				const skillPath = getInstallPath(skillName, agentKey, {
+					global: isGlobal,
+					cwd
+				});
+				const pathsToCleanup = new Set([skillPath]);
+				const sanitizedName = sanitizeName(skillName);
+				if (isGlobal && agent.globalSkillsDir) pathsToCleanup.add(join(agent.globalSkillsDir, sanitizedName));
+				else pathsToCleanup.add(join(cwd, agent.skillsDir, sanitizedName));
+				for (const pathToCleanup of pathsToCleanup) {
+					if (pathToCleanup === canonicalPath) continue;
+					try {
+						if (await lstat(pathToCleanup).catch(() => null)) await rm(pathToCleanup, {
+							recursive: true,
+							force: true
+						});
+					} catch (err) {
+						M.warn(`Could not remove skill from ${agent.displayName}: ${err instanceof Error ? err.message : String(err)}`);
+					}
+				}
+			}
+			const remainingAgents = (await detectInstalledAgents()).filter((a) => !targetAgents.includes(a));
+			let isStillUsed = false;
+			for (const agentKey of remainingAgents) if (await lstat(getInstallPath(skillName, agentKey, {
+				global: isGlobal,
+				cwd
+			})).catch(() => null)) {
+				isStillUsed = true;
+				break;
+			}
+			if (!isStillUsed) await rm(canonicalPath, {
+				recursive: true,
+				force: true
+			});
+			const lockEntry = isGlobal ? await getSkillFromLock(skillName) : null;
+			const effectiveSource = lockEntry?.source || "local";
+			const effectiveSourceType = lockEntry?.sourceType || "local";
+			if (isGlobal) await removeSkillFromLock(skillName);
+			results.push({
+				skill: skillName,
+				success: true,
+				source: effectiveSource,
+				sourceType: effectiveSourceType
+			});
+		} catch (err) {
+			results.push({
+				skill: skillName,
+				success: false,
+				error: err instanceof Error ? err.message : String(err)
+			});
+		}
+	}
+	spinner.stop("Removal process complete");
+	const successful = results.filter((r) => r.success);
+	const failed = results.filter((r) => !r.success);
+	if (successful.length > 0) {
+		const bySource = /* @__PURE__ */ new Map();
+		for (const r of successful) {
+			const source = r.source || "local";
+			const existing = bySource.get(source) || { skills: [] };
+			existing.skills.push(r.skill);
+			existing.sourceType = r.sourceType;
+			if (skillScopeMap.get(r.skill)) existing.isGlobal = true;
+			bySource.set(source, existing);
+		}
+		for (const [source, data] of bySource) track({
+			event: "remove",
+			source,
+			skills: data.skills.join(","),
+			agents: targetAgents.join(","),
+			...data.isGlobal && { global: "1" },
+			sourceType: data.sourceType
+		});
+	}
+	if (successful.length > 0) M.success(import_picocolors.default.green(`Successfully removed ${successful.length} skill(s)`));
+	if (failed.length > 0) {
+		M.error(import_picocolors.default.red(`Failed to remove ${failed.length} skill(s)`));
+		for (const r of failed) M.message(`  ${import_picocolors.default.red("✗")} ${r.skill}: ${r.error}`);
+	}
+	console.log();
+	Se(import_picocolors.default.green("Done!"));
+}
+function parseRemoveOptions(args) {
+	const options = {};
+	const skills = [];
+	for (let i = 0; i < args.length; i++) {
+		const arg = args[i];
+		if (arg === "-g" || arg === "--global") options.global = true;
+		else if (arg === "-p" || arg === "--project") options.project = true;
+		else if (arg === "-y" || arg === "--yes") options.yes = true;
+		else if (arg === "--all") options.all = true;
+		else if (arg === "-a" || arg === "--agent") {
+			options.agent = options.agent || [];
+			i++;
+			let nextArg = args[i];
+			while (i < args.length && nextArg && !nextArg.startsWith("-")) {
+				options.agent.push(nextArg);
+				i++;
+				nextArg = args[i];
+			}
+			i--;
+		} else if (arg && !arg.startsWith("-")) skills.push(arg);
+	}
+	return {
+		skills,
+		options
+	};
+}
 const BLOB_ALLOWED_OWNERS = [
 	"vercel",
 	"vercel-labs",
@@ -5982,6 +6016,7 @@ ${BOLD}Use Options:${RESET}
 
 ${BOLD}Remove Options:${RESET}
   -g, --global           Remove from global scope
+  -p, --project          Remove from project scope
   -a, --agent <agents>   Remove from specific agents (use '*' for all agents)
   -s, --skill <skills>   Specify skills to remove (use '*' for all skills)
   -y, --yes              Skip confirmation prompts
@@ -6039,7 +6074,8 @@ ${BOLD}Arguments:${RESET}
   skills            Optional skill names to remove (space-separated)
 
 ${BOLD}Options:${RESET}
-  -g, --global       Remove from global scope (~/) instead of project scope
+  -g, --global       Remove from global scope (~/)
+  -p, --project      Remove from project scope (./)
   -a, --agent        Remove from specific agents (use '*' for all agents)
   -s, --skill        Specify skills to remove (use '*' for all skills)
   -y, --yes          Skip confirmation prompts
