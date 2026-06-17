@@ -2693,26 +2693,27 @@ async function writeSkillLock(lock) {
 	await mkdir(dirname(lockPath), { recursive: true });
 	await writeFile(lockPath, JSON.stringify(lock, null, 2), "utf-8");
 }
-let _ghWarningShown = false;
+let _ghTokenResolved = false;
+let _ghToken = null;
 function getGitHubToken() {
 	if (process.env.GITHUB_TOKEN) return process.env.GITHUB_TOKEN;
 	if (process.env.GH_TOKEN) return process.env.GH_TOKEN;
-	if (!_ghWarningShown) {
-		process.stderr.write(`${import_picocolors.default.yellow("│")}  ${import_picocolors.default.yellow("GitHub rate limit reached")} — using your ${import_picocolors.default.cyan("gh")} login to continue.\n${import_picocolors.default.yellow("│")}  ${import_picocolors.default.dim(`Tip: set ${import_picocolors.default.cyan("GITHUB_TOKEN")} to avoid this prompt, or use ${import_picocolors.default.cyan("--full-depth")} to clone instead.\n`)}`);
-		_ghWarningShown = true;
+	if (!_ghTokenResolved) {
+		_ghTokenResolved = true;
+		try {
+			_ghToken = execSync("gh auth token", {
+				encoding: "utf-8",
+				stdio: [
+					"pipe",
+					"pipe",
+					"pipe"
+				]
+			}).trim() || null;
+		} catch {
+			_ghToken = null;
+		}
 	}
-	try {
-		const token = execSync("gh auth token", {
-			encoding: "utf-8",
-			stdio: [
-				"pipe",
-				"pipe",
-				"pipe"
-			]
-		}).trim();
-		if (token) return token;
-	} catch {}
-	return null;
+	return _ghToken;
 }
 async function addSkillToLock(skillName, entry) {
 	const lock = await readSkillLock();
@@ -2768,7 +2769,6 @@ const FETCH_TIMEOUT = 1e4;
 function toSkillSlug(name) {
 	return name.toLowerCase().replace(/[\s_]+/g, "-").replace(/[^a-z0-9-]/g, "").replace(/-+/g, "-").replace(/^-|-$/g, "");
 }
-let _rateLimitedThisSession = false;
 async function fetchTreeBranch(ownerRepo, branch, token) {
 	try {
 		const url = `https://api.github.com/repos/${ownerRepo}/git/trees/${encodeURIComponent(branch)}?recursive=1`;
@@ -2784,23 +2784,14 @@ async function fetchTreeBranch(ownerRepo, branch, token) {
 		if (response.ok) {
 			const data = await response.json();
 			return {
-				tree: {
-					sha: data.sha,
-					branch,
-					tree: data.tree
-				},
-				rateLimited: false
+				sha: data.sha,
+				branch,
+				tree: data.tree
 			};
 		}
-		return {
-			tree: null,
-			rateLimited: response.status === 403 && response.headers.get("x-ratelimit-remaining") === "0"
-		};
+		return null;
 	} catch {
-		return {
-			tree: null,
-			rateLimited: false
-		};
+		return null;
 	}
 }
 async function fetchRepoTree(ownerRepo, ref, getToken) {
@@ -2809,31 +2800,10 @@ async function fetchRepoTree(ownerRepo, ref, getToken) {
 		"main",
 		"master"
 	];
-	if (_rateLimitedThisSession && getToken) {
-		const token = getToken();
-		if (!token) return null;
-		for (const branch of branches) {
-			const result = await fetchTreeBranch(ownerRepo, branch, token);
-			if (result.tree) return result.tree;
-		}
-		return null;
-	}
-	let rateLimited = false;
+	const token = getToken ? getToken() : null;
 	for (const branch of branches) {
-		const result = await fetchTreeBranch(ownerRepo, branch, null);
-		if (result.tree) return result.tree;
-		if (result.rateLimited) {
-			rateLimited = true;
-			break;
-		}
-	}
-	if (!rateLimited || !getToken) return null;
-	_rateLimitedThisSession = true;
-	const token = getToken();
-	if (!token) return null;
-	for (const branch of branches) {
-		const result = await fetchTreeBranch(ownerRepo, branch, token);
-		if (result.tree) return result.tree;
+		const tree = await fetchTreeBranch(ownerRepo, branch, token);
+		if (tree) return tree;
 	}
 	return null;
 }
