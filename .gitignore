@@ -3,8 +3,11 @@ node_modules
 
 # output
 out
-dist
 *.tgz
+# NOTE (fork): dist/ is intentionally committed (not ignored like upstream) so
+# `bun add -g git+ssh://github.com/aryasaatvik/skills-cli.git` installs a runnable
+# CLI without a build step — Bun does not reliably build git deps on install.
+# Rebuild + commit dist/ when releasing a fix.
 
 # code coverage
 coverage
