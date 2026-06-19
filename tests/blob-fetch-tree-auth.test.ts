@@ -46,6 +46,16 @@ function permissionDeniedResponse(): Response {
   });
 }
 
+function notFoundResponse(): Response {
+  return new Response(JSON.stringify({ message: 'Not Found' }), {
+    status: 404,
+    headers: {
+      'content-type': 'application/json',
+      'x-ratelimit-remaining': '59',
+    },
+  });
+}
+
 describe('fetchRepoTree lazy auth fallback', () => {
   let fetchMock: ReturnType<typeof vi.fn>;
   let originalFetch: typeof globalThis.fetch;
@@ -104,6 +114,26 @@ describe('fetchRepoTree lazy auth fallback', () => {
 
     expect(result).toBeNull();
     expect(getToken).not.toHaveBeenCalled();
+  });
+
+  it('invokes the token resolver and retries with auth when a private repo 404s', async () => {
+    // GitHub hides private repos behind a 404 for unauthenticated requests, so
+    // the unauth pass never succeeds and never rate-limits. A token must be
+    // tried on a 404 too, otherwise private skills can never be update-checked.
+    fetchMock
+      .mockResolvedValueOnce(notFoundResponse())
+      .mockResolvedValueOnce(okResponse(SAMPLE_TREE));
+    const getToken = vi.fn(() => 'ghp_fake_token');
+
+    const result = await fetchRepoTree('private/repo', 'main', getToken);
+
+    expect(result?.sha).toBe('deadbeef');
+    expect(getToken).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const retryInit = fetchMock.mock.calls[1]?.[1] as RequestInit;
+    expect((retryInit.headers as Record<string, string>)['Authorization']).toBe(
+      'Bearer ghp_fake_token'
+    );
   });
 
   it('returns null gracefully when rate-limited and no token resolver is provided', async () => {
