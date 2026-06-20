@@ -2,6 +2,8 @@
 
 The CLI for the open agent skills ecosystem.
 
+> **Fork.** This is [`@aryasaatvik/skills`](https://github.com/aryasaatvik/skills-cli) — a lightly-patched fork of [`vercel-labs/skills`](https://github.com/vercel-labs/skills), adding global `update --skill` scoping and private-repo (404/401) auth fixes. Install with `npm i -g @aryasaatvik/skills`; the `skills` command and everything below are unchanged.
+
 <!-- agent-list:start -->
 Supports **OpenCode**, **Claude Code**, **Codex**, **Cursor**, and [68 more](#supported-agents).
 <!-- agent-list:end -->

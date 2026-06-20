@@ -114,13 +114,13 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/vercel-labs/skills.git"
+    "url": "git+https://github.com/aryasaatvik/skills-cli.git"
   },
-  "homepage": "https://github.com/vercel-labs/skills#readme",
+  "homepage": "https://github.com/aryasaatvik/skills-cli#readme",
   "bugs": {
-    "url": "https://github.com/vercel-labs/skills/issues"
+    "url": "https://github.com/aryasaatvik/skills-cli/issues"
   },
-  "author": "",
+  "author": "Saatvik Arya",
   "license": "MIT",
   "devDependencies": {
     "@clack/prompts": "^0.11.0",
