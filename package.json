@@ -1,7 +1,10 @@
 {
-  "name": "skills",
-  "version": "1.7.0",
+  "name": "@aryasaatvik/skills",
+  "version": "1.6.0",
   "description": "The open agent skills ecosystem",
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "bin": {
     "skills": "./bin/cli.mjs",
