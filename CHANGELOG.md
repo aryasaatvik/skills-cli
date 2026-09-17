@@ -1,9 +1,6 @@
----
-packages:
-  "@aryasaatvik/skills": minor
----
+## @aryasaatvik/skills@1.7.0
 
-## Preserve project agent targets
+### Preserve project agent targets
 
 `skills add` and `skills experimental_sync` now record each project skill's effective agent
 destinations in `skills-lock.json`, and `skills update` reuses them. A skill installed only to the
