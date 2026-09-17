@@ -140,6 +140,13 @@ async function discoverNodeModuleSkills(
 export async function runSync(args: string[], options: SyncOptions = {}): Promise<void> {
   const cwd = process.cwd();
 
+  // Capture command-line intent before agent-context detection populates
+  // options.agent with automatic defaults, so an explicitly targeted
+  // non-universal agent still creates its project root (mirrors add).
+  const explicitlySelectedAgents = new Set<AgentType>(
+    options.agent?.includes('*') ? [] : ((options.agent as AgentType[] | undefined) ?? [])
+  );
+
   // Auto-enable non-interactive mode when running inside an AI agent
   const agentResult = await detectAgent();
   if (agentResult.isAgent) {
@@ -286,6 +293,7 @@ export async function runSync(args: string[], options: SyncOptions = {}): Promis
         }
 
         targetAgents = selected as AgentType[];
+        for (const agent of targetAgents) explicitlySelectedAgents.add(agent);
       }
     } else if (installedAgents.length === 1 || options.yes) {
       // Ensure universal agents are included
@@ -324,6 +332,7 @@ export async function runSync(args: string[], options: SyncOptions = {}): Promis
       }
 
       targetAgents = selected as AgentType[];
+      for (const agent of targetAgents) explicitlySelectedAgents.add(agent);
     }
   }
 
@@ -369,6 +378,7 @@ export async function runSync(args: string[], options: SyncOptions = {}): Promis
         global: false,
         cwd,
         mode: 'symlink',
+        createMissingAgentRoot: explicitlySelectedAgents.has(agent),
       });
       results.push({
         skill: skill.name,
