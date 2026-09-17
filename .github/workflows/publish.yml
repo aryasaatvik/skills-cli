@@ -1,104 +1,64 @@
-name: Publish
+name: publish
 
+# Replaced in the fork with the Tegami publish path. The upstream vercel-labs
+# manual dispatch workflow (maintainer GPG signing + npm publish) is not used.
 on:
+  pull_request:
+    types: [closed]
   workflow_dispatch:
     inputs:
-      bump:
-        description: 'Version bump type'
-        required: true
-        type: choice
-        options:
-          - patch
-          - minor
+      dry_run:
+        description: validate the publish lock without publishing
+        type: boolean
+        default: false
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+permissions:
+  contents: read
 
 jobs:
   publish:
+    name: publish
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.merged == true &&
+       github.event.pull_request.head.repo.full_name == github.repository &&
+       (github.event.pull_request.head.ref == 'tegami/version-packages' ||
+        contains(github.event.pull_request.labels.*.name, 'release')))
     runs-on: ubuntu-latest
-    environment: npm-publish
     permissions:
       contents: write
       id-token: write
-
+      pull-requests: write
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v6
+      - name: checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Setup pnpm
+      - name: setup pnpm
         uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
 
-      - name: Setup Node
-        uses: actions/setup-node@v6
+      - name: setup node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "24"
-          cache: pnpm
-          registry-url: 'https://registry.npmjs.org'
+          node-version: 24
+          registry-url: https://registry.npmjs.org
 
-      - name: Install dependencies
+      - name: install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build
-        run: pnpm build
-
-      - name: Import GPG signing key
-        # Pinned to a maintainer-owned fork of crazy-max/ghaction-import-gpg
-        # so a compromise of the upstream namespace can't push malicious code
-        # into our release pipeline. Update the SHA deliberately when pulling
-        # upstream changes.
-        uses: quuu/ghaction-import-gpg@72c784c2e295f26ec09b0c20761c93711beaa338
-        with:
-          gpg_private_key: ${{ secrets.PUBLISH_BOT_GPG_PRIVATE_KEY }}
-          git_user_signingkey: true
-          git_commit_gpgsign: true
-          git_tag_gpgsign: true
-          git_config_global: true
-
-      - name: Reset generated files
-        run: |
-          git checkout -- ThirdPartyNoticeText.txt || true
-
-      - name: Bump version
-        run: |
-          npm version ${{ inputs.bump }} -m "v%s"
-
-      - name: Push changes
-        run: |
-          git push
-          git push --tags
-
-      - name: Publish to npm
-        id: publish
-        run: npm publish --provenance --access public
-
-      - name: Create GitHub Release
-        if: steps.publish.outcome == 'success'
-        run: |
-          VERSION=$(node -p "require('./package.json').version")
-
-          # Get changelog from merged PRs since last tag
-          LATEST_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-          if [ -z "$LATEST_TAG" ]; then
-            SINCE=""
-          else
-            SINCE=$(git log -1 --format=%cI ${LATEST_TAG})
-          fi
-
-          # Fetch merged PRs and format as changelog
-          if [ -z "$SINCE" ]; then
-            PRS=$(gh pr list --state merged --json number,title,author --limit 100)
-          else
-            PRS=$(gh pr list --state merged --search "merged:>=${SINCE}" --json number,title,author --limit 100)
-          fi
-
-          CHANGELOG=$(echo "$PRS" | jq -r '.[] | "- \(.title) (#\(.number))"')
-          CONTRIBUTORS=$(echo "$PRS" | jq -r '.[].author.login' | sort -u | sed 's/^/@/' | paste -sd ', ' -)
-
-          # Generate release notes from template
-          export VERSION CHANGELOG CONTRIBUTORS
-          envsubst < .github/RELEASE_TEMPLATE.md > release-notes.md
-
-          gh release create "v${VERSION}" --notes-file release-notes.md
+      - name: version and publish
+        if: github.event_name != 'workflow_dispatch' || inputs.dry_run != true
+        run: pnpm run tegami ci
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: validate publish lock (dry run)
+        if: github.event_name == 'workflow_dispatch' && inputs.dry_run == true
+        run: pnpm run tegami publish --dry-run
+        env:
+          GITHUB_TOKEN: ${{ github.token }}

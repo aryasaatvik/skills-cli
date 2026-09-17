@@ -40,7 +40,7 @@ const release = tegami({
     client: 'pnpm',
     trustedPublish: {
       provider: 'github',
-      workflow: 'release.yml',
+      workflow: 'publish.yml',
     },
   },
   packages: {
@@ -53,7 +53,7 @@ const release = tegami({
       versionPr: {
         branch: 'tegami/version-packages',
         base: 'main',
-        forceCreate: true,
+        forceCreate: false,
         create() {
           const version = this.graph.get(PACKAGE_ID)?.version;
           return {

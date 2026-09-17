@@ -1,8 +1,26 @@
 # Releasing skills
 
 `@aryasaatvik/skills` uses [Tegami](https://tegami.fuma-nama.dev) for changelogs, versioning, npm
-publication, Git tags, and GitHub Releases. Releases run from `main` through GitHub Actions and npm
-trusted publishing.
+publication, Git tags, and GitHub Releases. Releases run through GitHub Actions and npm trusted
+publishing. Only the Tegami workflows are active in this fork; the upstream `ci.yml` and `agents.yml`
+are disabled (manual `workflow_dispatch`).
+
+`.github/workflows/prepare-release.yml` drafts the release: on its nightly schedule or a manual
+dispatch it runs `pnpm run tegami version`, which opens or updates a Version Packages pull request
+when `.tegami/` has pending changelog files and writes `.tegami/publish-lock.yaml`. Merging that pull
+request is the human gate, and the merge triggers `.github/workflows/publish.yml`, which runs
+`pnpm run tegami ci` to publish from the lock. Ordinary pushes to `main` do **not** publish. Do not
+auto-merge the Version Packages pull request with `GITHUB_TOKEN` — GitHub does not re-run workflows
+for commits created by that token, so publish would never start.
+
+Authentication is npm trusted publishing (OIDC). `publish.yml` sets `id-token: write` and does not
+use an `NPM_TOKEN`. The package must list GitHub Actions trusted publisher `aryasaatvik/skills-cli`
+with workflow filename `publish.yml` and no environment name. Do not rename `publish.yml`; npm pins
+that filename.
+
+Pull requests that touch release-relevant paths get a release plan comment from the split
+`release-plan.yml` / `release-plan-comment.yml` workflows. Run `pnpm run tegami pr preview` locally
+at any time.
 
 ## Queue a change
 
@@ -19,39 +37,14 @@ packages:
 Describe the user-visible result.
 ```
 
-Commit the changelog entry with the implementation that it describes.
+Commit the changelog entry with the implementation that it describes. The nightly Prepare release
+run, or a manual dispatch of it, opens the Version Packages pull request.
 
-## Prepare a version pull request
+## Version Packages pull request
 
-Start from a clean, current `main` branch with GitHub CLI authentication:
-
-```sh
-pnpm install --frozen-lockfile
-GH_TOKEN="$(gh auth token)" pnpm run version:packages
-```
-
-Tegami consumes the pending changelog entries, updates `package.json` and `CHANGELOG.md`, writes its
-publish lock, pushes `tegami/version-packages`, and opens or updates a pull request against `main`.
-Review and merge that pull request before publishing.
-
-## Publish
-
-After the version pull request is merged, the `release.yml` workflow runs from the clean merged
-`main` branch. It installs dependencies, runs the release checks, then runs:
-
-```sh
-pnpm run release:check && pnpm run tegami ci
-```
-
-The workflow grants GitHub's OIDC token to npm and has no `NPM_TOKEN` secret. Tegami publishes the
-package, creates and pushes the `v<version>` Git tag, and creates the matching GitHub Release.
-
-The npm trusted publisher must be configured as:
-
-- Repository: `aryasaatvik/skills-cli`
-- Workflow filename: `release.yml`
-- Environment: blank
-- Publishing method: npm publish only
+Review the generated version bump, changelog aggregation, lockfile, and `.tegami/publish-lock.yaml`.
+Merge it in the GitHub UI (or with a non-`GITHUB_TOKEN` actor). The merge triggers `publish.yml`,
+which publishes and creates the GitHub Release.
 
 ## First-time trusted publishing
 
@@ -63,19 +56,21 @@ Configure trusted publishing once before the first OIDC publish:
 - If the package already exists (`@aryasaatvik/skills` does), add the trusted publisher in the npm
   package settings using the values above, or with `npm trust`.
 
-Verify the result:
+## Verify a publish
 
 ```sh
+gh run list --workflow=publish.yml --limit 5
 npm view @aryasaatvik/skills version
 npm view @aryasaatvik/skills dist-tags --json
 gh release view "v$(node -p 'require("./package.json").version')"
 ```
 
-Do not merge a version pull request or rerun a partially completed workflow without first checking
-the npm version, Git tag, GitHub Release, and Tegami publish status.
+If a publish job fails partway through, fix the cause and re-run the same workflow. The publish lock
+makes retries safe.
 
-## Upstream workflow
+## Local scripts
 
-`.github/workflows/publish.yml` is the upstream vercel-labs publish workflow. It only runs on manual
-`workflow_dispatch` and depends on maintainer secrets this fork does not hold, so the Tegami
-`release.yml` workflow is the fork's release path.
+- `pnpm run tegami` — queue a changelog entry.
+- `pnpm run version:packages` — draft version changes locally.
+- `pnpm run release:check` — type-check, build, test, and format check.
+- `pnpm run release` — `release:check` then `tegami publish` (emergency local publish).

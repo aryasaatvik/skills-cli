@@ -154,25 +154,26 @@ CI will fail if code is not properly formatted.
 
 ## Release Strategy
 
-- npm package: `@aryasaatvik/skills`
-- Releases run from the `main` branch GitHub Action with Tegami and npm trusted publishing; local
-  sessions only prepare or verify releases.
+- npm package: `@aryasaatvik/skills`. Releases use Tegami and npm trusted publishing.
 - Tags are versioned as `vX.Y.Z`.
+- Only the Tegami workflows are active; the upstream `ci.yml` and `agents.yml` are disabled
+  (`workflow_dispatch` only). Run them manually when needed.
 - Add user-facing release notes under `.tegami/` and commit them with the implementation they
   describe.
-- `pnpm run version:packages` consumes pending entries, updates the package version and
-  `CHANGELOG.md`, writes the publish lock, and opens or updates `tegami/version-packages` against
-  `main`.
-- After the version pull request is merged, `.github/workflows/release.yml` runs the release checks,
-  then `pnpm run tegami ci` publishes through npm OIDC, pushes the matching `v<version>` tag, and
-  creates the GitHub Release.
-- The npm trusted publisher is `aryasaatvik/skills-cli` + `release.yml` with no environment; no
-  `NPM_TOKEN` is used.
-- Configure the trusted publisher once with `pnpm run release:pretrust` (new packages) or the npm
+- `.github/workflows/prepare-release.yml` runs nightly (and on manual dispatch) to draft versions,
+  writing `.tegami/publish-lock.yaml` and opening or updating `tegami/version-packages` against
+  `main`. Merging that pull request is the human gate.
+- The merge triggers `.github/workflows/publish.yml`, which runs `pnpm run tegami ci` to publish
+  through npm OIDC, push the matching `v<version>` tag, and create the GitHub Release. Ordinary
+  pushes to `main` do not publish.
+- Do not auto-merge the Version Packages pull request with `GITHUB_TOKEN`; its commits will not
+  trigger `publish.yml`.
+- The npm trusted publisher is `aryasaatvik/skills-cli` + `publish.yml` with no environment; no
+  `NPM_TOKEN` is used. Configure it once with `pnpm run release:pretrust` (new packages) or the npm
   package settings (existing packages).
+- Release-relevant pull requests get a release plan comment from `release-plan.yml` and
+  `release-plan-comment.yml`; preview locally with `pnpm run tegami pr preview`.
 - See `docs/release.md` for the workflow and verification procedure.
-- `.github/workflows/publish.yml` is the upstream vercel-labs manual workflow; the fork's release
-  path is `release.yml`.
 
 ## Adding a New Agent
 
