@@ -51,6 +51,12 @@ import {
 import { addSkillToLocalLock, computeSkillFolderHash } from './local-lock.ts';
 import type { Skill, AgentType } from './types.ts';
 import {
+  collectAgentValues,
+  expandAgentValues,
+  getEffectiveAgentTargets,
+  getInvalidAgentNames,
+} from './agent-options.ts';
+import {
   tryBlobInstall,
   BLOB_ALLOWED_REPOS,
   getSkillFolderHashFromTree,
@@ -759,10 +765,10 @@ async function handleWellKnownSkills(
 
   if (options.agent?.includes('*')) {
     // --agent '*' selects all agents
-    targetAgents = validAgents as AgentType[];
+    targetAgents = expandAgentValues(options.agent);
     p.log.info(`Installing to all ${targetAgents.length} agents`);
   } else if (options.agent && options.agent.length > 0) {
-    const invalidAgents = options.agent.filter((a) => !validAgents.includes(a));
+    const invalidAgents = getInvalidAgentNames(options.agent);
 
     if (invalidAgents.length > 0) {
       p.log.error(`Invalid agents: ${invalidAgents.join(', ')}`);
@@ -770,7 +776,7 @@ async function handleWellKnownSkills(
       process.exit(1);
     }
 
-    targetAgents = options.agent as AgentType[];
+    targetAgents = expandAgentValues(options.agent);
   } else {
     spinner.start('Loading agents…');
     const installedAgents = await detectInstalledAgents();
@@ -946,6 +952,7 @@ async function handleWellKnownSkills(
 
   const results: {
     skill: string;
+    agentType: AgentType;
     agent: string;
     success: boolean;
     path: string;
@@ -963,6 +970,7 @@ async function handleWellKnownSkills(
       });
       results.push({
         skill: skill.installName,
+        agentType: agent,
         agent: agents[agent].displayName,
         ...result,
       });
@@ -1027,6 +1035,9 @@ async function handleWellKnownSkills(
           const installDir = matchingResult?.canonicalPath || matchingResult?.path;
           if (installDir) {
             const computedHash = await computeSkillFolderHash(installDir);
+            const effectiveAgents = getEffectiveAgentTargets(
+              results.filter((result) => result.skill === skill.installName)
+            );
             await addSkillToLocalLock(
               skill.installName,
               {
@@ -1035,6 +1046,7 @@ async function handleWellKnownSkills(
                 sourceType: 'well-known',
                 computedHash,
                 wellKnownDigest: computeWellKnownSkillDigest(skill),
+                ...(effectiveAgents.length > 0 && { agents: effectiveAgents }),
               },
               cwd
             );
@@ -1597,10 +1609,10 @@ export async function runAdd(args: string[], options: AddOptions = {}): Promise<
 
     if (options.agent?.includes('*')) {
       // --agent '*' selects all agents
-      targetAgents = validAgents as AgentType[];
+      targetAgents = expandAgentValues(options.agent);
       p.log.info(`Installing to all ${targetAgents.length} agents`);
     } else if (options.agent && options.agent.length > 0) {
-      const invalidAgents = options.agent.filter((a) => !validAgents.includes(a));
+      const invalidAgents = getInvalidAgentNames(options.agent);
 
       if (invalidAgents.length > 0) {
         p.log.error(`Invalid agents: ${invalidAgents.join(', ')}`);
@@ -1609,7 +1621,7 @@ export async function runAdd(args: string[], options: AddOptions = {}): Promise<
         emitJsonAndExit(1, `Invalid agents: ${invalidAgents.join(', ')}`);
       }
 
-      targetAgents = options.agent as AgentType[];
+      targetAgents = expandAgentValues(options.agent);
     } else {
       spinner.start('Loading agents…');
       const installedAgents = await detectInstalledAgents();
@@ -1940,6 +1952,7 @@ export async function runAdd(args: string[], options: AddOptions = {}): Promise<
 
     const results: {
       skill: string;
+      agentType: AgentType;
       agent: string;
       success: boolean;
       path: string;
@@ -1984,6 +1997,7 @@ export async function runAdd(args: string[], options: AddOptions = {}): Promise<
         }
         results.push({
           skill: getSkillDisplayName(skill),
+          agentType: agent,
           agent: targetDisplayName(target),
           pluginName: skill.pluginName,
           ...result,
@@ -2145,6 +2159,9 @@ export async function runAdd(args: string[], options: AddOptions = {}): Promise<
             const computedHash = installedSkillHashes.get(skillDisplayName);
             if (computedHash === undefined) continue;
             const skillPathValue = skillFiles[skill.name];
+            const effectiveAgents = getEffectiveAgentTargets(
+              results.filter((result) => result.skill === skillDisplayName)
+            );
             await addSkillToLocalLock(
               skill.name,
               {
@@ -2155,6 +2172,7 @@ export async function runAdd(args: string[], options: AddOptions = {}): Promise<
                 ...(skillPathValue && { skillPath: skillPathValue }),
                 computedHash,
                 ...(recordSubagents && { subagents: eveSubagents }),
+                ...(effectiveAgents.length > 0 && { agents: effectiveAgents }),
               },
               cwd
             );
@@ -2447,15 +2465,9 @@ export function parseAddOptions(args: string[]): {
     } else if (arg === '--all') {
       options.all = true;
     } else if (arg === '-a' || arg === '--agent') {
-      options.agent = options.agent || [];
-      i++;
-      let nextArg = args[i];
-      while (i < args.length && nextArg && !nextArg.startsWith('-')) {
-        options.agent.push(nextArg);
-        i++;
-        nextArg = args[i];
-      }
-      i--; // Back up one since the loop will increment
+      const parsed = collectAgentValues(args, i);
+      options.agent = [...(options.agent || []), ...parsed.values];
+      i = parsed.endIndex;
     } else if (arg === '-s' || arg === '--skill') {
       options.skill = options.skill || [];
       i++;

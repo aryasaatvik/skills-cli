@@ -120,6 +120,31 @@ Instructions.
       expect(lock.skills['lock-test-skill'].source).toBe('my-pkg');
       expect(lock.skills['lock-test-skill'].sourceType).toBe('node_modules');
       expect(lock.skills['lock-test-skill'].computedHash).toMatch(/^[a-f0-9]{64}$/);
+      expect(lock.skills['lock-test-skill'].agents).toEqual(['claude-code']);
+    });
+
+    it('creates and records an explicitly targeted non-universal agent', () => {
+      const pkgDir = join(testDir, 'node_modules', 'my-pkg');
+      mkdirSync(pkgDir, { recursive: true });
+      writeFileSync(
+        join(pkgDir, 'SKILL.md'),
+        `---
+name: explicit-target-skill
+description: Explicit non-universal sync target
+---
+
+# Explicit Target
+Instructions.
+`
+      );
+
+      // Augment's project root does not exist yet; an explicit --agent target
+      // must still create its link and be recorded for future updates.
+      runCli(['experimental_sync', '-y', '-a', 'augment'], testDir);
+
+      expect(existsSync(join(testDir, '.augment', 'skills', 'explicit-target-skill'))).toBe(true);
+      const lock = JSON.parse(readFileSync(join(testDir, 'skills-lock.json'), 'utf-8'));
+      expect(lock.skills['explicit-target-skill'].agents).toEqual(['augment']);
     });
 
     it('should not have timestamps in lock entries', () => {

@@ -28,6 +28,7 @@ import { sanitizeMetadata } from './sanitize.ts';
 import { track } from './telemetry.ts';
 import { agents, isUniversalAgent } from './agents.ts';
 import type { AgentType } from './types.ts';
+import { collectAgentValues, getInvalidAgentNames, getValidAgentNames } from './agent-options.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -46,6 +47,8 @@ export interface UpdateCheckOptions {
   global?: boolean;
   project?: boolean;
   yes?: boolean;
+  /** Optional agent target override for reinstall operations. */
+  agent?: string[];
   /** Optional skill name(s) to filter on (positional args) */
   skills?: string[];
 }
@@ -65,13 +68,18 @@ function getUpdateChildEnv(sourceType: string): NodeJS.ProcessEnv | undefined {
 export function parseUpdateOptions(args: string[]): UpdateCheckOptions {
   const options: UpdateCheckOptions = {};
   const positional: string[] = [];
-  for (const arg of args) {
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]!;
     if (arg === '-g' || arg === '--global') {
       options.global = true;
     } else if (arg === '-p' || arg === '--project') {
       options.project = true;
     } else if (arg === '-y' || arg === '--yes') {
       options.yes = true;
+    } else if (arg === '-a' || arg === '--agent') {
+      const parsed = collectAgentValues(args, i);
+      options.agent = [...(options.agent || []), ...parsed.values];
+      i = parsed.endIndex;
     } else if (!arg.startsWith('-')) {
       positional.push(arg);
     }
@@ -80,6 +88,19 @@ export function parseUpdateOptions(args: string[]): UpdateCheckOptions {
     options.skills = positional;
   }
   return options;
+}
+
+function validateUpdateAgentOption(agentValues: string[] | undefined): string[] {
+  if (agentValues === undefined) return [];
+  if (agentValues.length === 0) return ['--agent requires an agent name'];
+
+  const invalidAgents = getInvalidAgentNames(agentValues);
+  if (invalidAgents.length === 0) return [];
+
+  return [
+    `Invalid agents: ${invalidAgents.join(', ')}`,
+    `Valid agents: ${getValidAgentNames().join(', ')}`,
+  ];
 }
 
 /**
@@ -321,6 +342,7 @@ export interface WellKnownUpdateItem {
   name: string;
   digest: string;
   subagents?: string[];
+  agents?: AgentType[];
 }
 
 export type WellKnownCheckResult =
@@ -453,6 +475,9 @@ export async function processWellKnownUpdates(
         !isGlobal && subagents?.length
           ? ['--subagent', ...subagents.map((s) => (s === '' ? 'root' : s))]
           : [];
+      const recordedAgents = itemByName.get(name)?.agents;
+      const agentValues = options.agent ?? (!isGlobal ? recordedAgents : undefined);
+      const agentArgs = agentValues?.length ? ['--agent', ...agentValues] : [];
 
       const spawnResult = spawnSync(
         process.execPath,
@@ -462,6 +487,7 @@ export async function processWellKnownUpdates(
           baseUrl,
           '--skill',
           name,
+          ...agentArgs,
           ...subagentArgs,
           ...(isGlobal ? ['-g'] : []),
           '-y',
@@ -707,9 +733,20 @@ export async function updateGlobalSkills(
       continue;
     }
     const fullDepthArgs = shouldUseFullDepthForUpdate(update.entry) ? ['--full-depth'] : [];
+    const agentArgs = options.agent?.length ? ['--agent', ...options.agent] : [];
     const result = spawnSync(
       process.execPath,
-      [cliEntry, 'add', installUrl, '--skill', update.name, ...fullDepthArgs, '-g', '-y'],
+      [
+        cliEntry,
+        'add',
+        installUrl,
+        '--skill',
+        update.name,
+        ...agentArgs,
+        ...fullDepthArgs,
+        '-g',
+        '-y',
+      ],
       {
         stdio: ['inherit', 'pipe', 'pipe'],
         encoding: 'utf-8',
@@ -763,6 +800,7 @@ export async function updateProjectSkills(
         name: skill.name,
         digest: entry.wellKnownDigest,
         subagents: entry.subagents,
+        agents: entry.agents,
       });
       wellKnownGroups.set(entry.sourceUrl, group);
     } else {
@@ -923,6 +961,8 @@ export async function updateProjectSkills(
       const subagentArgs = skill.entry.subagents?.length
         ? ['--subagent', ...skill.entry.subagents.map((s) => (s === '' ? 'root' : s))]
         : [];
+      const agentValues = options.agent ?? skill.entry.agents;
+      const agentArgs = agentValues?.length ? ['--agent', ...agentValues] : [];
       const fullDepthArgs = shouldUseFullDepthForUpdate(entry) ? ['--full-depth'] : [];
 
       const result = spawnSync(
@@ -933,6 +973,7 @@ export async function updateProjectSkills(
           installUrl,
           '--skill',
           skill.name,
+          ...agentArgs,
           ...subagentArgs,
           ...fullDepthArgs,
           '-y',
@@ -986,6 +1027,12 @@ export function printLegacyProjectSkills(
 
 export async function runUpdate(args: string[] = []): Promise<void> {
   const options = parseUpdateOptions(args);
+  const agentErrors = validateUpdateAgentOption(options.agent);
+  if (agentErrors.length > 0) {
+    for (const error of agentErrors) console.error(`Error: ${error}`);
+    process.exitCode = 1;
+    return;
+  }
   const scope = await resolveUpdateScope(options);
 
   if (options.skills) {

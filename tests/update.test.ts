@@ -1,6 +1,11 @@
 import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest';
 import { spawnSync } from 'child_process';
-import { updateProjectSkills, updateGlobalSkills, runUpdate } from '../src/update.ts';
+import {
+  updateProjectSkills,
+  updateGlobalSkills,
+  runUpdate,
+  parseUpdateOptions,
+} from '../src/update.ts';
 import * as git from '../src/git.ts';
 import * as skills from '../src/skills.ts';
 import * as blob from '../src/blob.ts';
@@ -86,6 +91,77 @@ describe('Update Cleanup Unit Tests', () => {
   });
 
   describe('updateProjectSkills', () => {
+    it('parses shared agent values and passes recorded project targets to add', async () => {
+      expect(parseUpdateOptions(['-p', '--agent', 'universal', 'pi', '-y'])).toEqual({
+        project: true,
+        agent: ['universal', 'pi'],
+        yes: true,
+      });
+
+      vi.mocked(localLock.readLocalLock).mockResolvedValue({
+        version: 1,
+        skills: {
+          'skill-a': {
+            source: 'owner/repo',
+            sourceType: 'github',
+            skillPath: 'skills/skill-a/SKILL.md',
+            computedHash: 'abc',
+            agents: ['universal'],
+          },
+        },
+      });
+      vi.mocked(git.cloneRepo).mockResolvedValue('/tmp/repo');
+      vi.mocked(skills.discoverSkills).mockResolvedValue([
+        {
+          name: 'skill-a',
+          path: '/tmp/repo/skills/skill-a',
+          description: 'A',
+          rawContent: '',
+        },
+      ]);
+
+      await updateProjectSkills({ yes: true });
+
+      const installCall = vi
+        .mocked(spawnSync)
+        .mock.calls.find((call) => Array.isArray(call[1]) && call[1].includes('add'));
+      expect(installCall?.[1]).toContain('--agent');
+      expect(installCall?.[1]).toContain('universal');
+      expect(installCall?.[1]).not.toContain('pi');
+    });
+
+    it('uses an explicit agent override instead of recorded project targets', async () => {
+      vi.mocked(localLock.readLocalLock).mockResolvedValue({
+        version: 1,
+        skills: {
+          'skill-a': {
+            source: 'owner/repo',
+            sourceType: 'github',
+            skillPath: 'skills/skill-a/SKILL.md',
+            computedHash: 'abc',
+            agents: ['pi'],
+          },
+        },
+      });
+      vi.mocked(git.cloneRepo).mockResolvedValue('/tmp/repo');
+      vi.mocked(skills.discoverSkills).mockResolvedValue([
+        {
+          name: 'skill-a',
+          path: '/tmp/repo/skills/skill-a',
+          description: 'A',
+          rawContent: '',
+        },
+      ]);
+
+      await updateProjectSkills({ yes: true, agent: ['universal'] });
+
+      const installCall = vi
+        .mocked(spawnSync)
+        .mock.calls.find((call) => Array.isArray(call[1]) && call[1].includes('add'));
+      expect(installCall?.[1]).toContain('universal');
+      expect(installCall?.[1]).not.toContain('pi');
+    });
+
     it('should prompt to remove deleted skill on update', async () => {
       // Mock local lock with 2 skills from same source
       vi.mocked(localLock.readLocalLock).mockResolvedValue({
@@ -490,6 +566,40 @@ describe('Update Cleanup Unit Tests', () => {
   });
 
   describe('updateGlobalSkills', () => {
+    it('passes a global agent override to the child add command', async () => {
+      vi.mocked(skillLock.readSkillLock).mockResolvedValue({
+        version: 3,
+        skills: {
+          'skill-a': {
+            source: 'owner/repo',
+            skillPath: 'skills/skill-a/SKILL.md',
+            sourceType: 'github',
+            skillFolderHash: 'a'.repeat(40),
+            installedAt: '',
+            updatedAt: '',
+          },
+        },
+      });
+      vi.mocked(blob.fetchRepoTree).mockResolvedValue({
+        sha: 'rootsha',
+        branch: 'main',
+        tree: [
+          { path: 'skills/skill-a/SKILL.md', type: 'blob', sha: 'sha1' },
+          { path: 'skills/skill-a', type: 'tree', sha: 'b'.repeat(40) },
+        ],
+      });
+      vi.mocked(blob.getSkillFolderHashFromTree).mockReturnValue('b'.repeat(40));
+
+      await updateGlobalSkills({ agent: ['codex'] });
+
+      const installCall = vi
+        .mocked(spawnSync)
+        .mock.calls.find((call) => Array.isArray(call[1]) && call[1].includes('add'));
+      expect(installCall?.[1]).toContain('--agent');
+      expect(installCall?.[1]).toContain('codex');
+      expect(installCall?.[1]).toContain('-g');
+    });
+
     it('should prompt to remove deleted skill on global update', async () => {
       // Mock readSkillLock
       vi.mocked(skillLock.readSkillLock).mockResolvedValue({

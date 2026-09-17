@@ -5,6 +5,7 @@ import { listInstalledSkills, sanitizeName, type InstalledSkill } from './instal
 import { sanitizeMetadata } from './sanitize.ts';
 import { getAllLockedSkills } from './skill-lock.ts';
 import { readLocalLock } from './local-lock.ts';
+import { collectAgentValues, getInvalidAgentNames, getValidAgentNames } from './agent-options.ts';
 
 const RESET = '\x1b[0m';
 const BOLD = '\x1b[1m';
@@ -62,11 +63,9 @@ export function parseListOptions(args: string[]): ListOptions {
     } else if (arg === '--json') {
       options.json = true;
     } else if (arg === '-a' || arg === '--agent') {
-      options.agent = options.agent || [];
-      // Collect all following arguments until next flag
-      while (i + 1 < args.length && !args[i + 1]!.startsWith('-')) {
-        options.agent.push(args[++i]!);
-      }
+      const parsed = collectAgentValues(args, i);
+      options.agent = [...(options.agent || []), ...parsed.values];
+      i = parsed.endIndex;
     }
   }
 
@@ -82,16 +81,15 @@ export async function runList(args: string[]): Promise<void> {
   // Validate agent filter if provided
   let agentFilter: AgentType[] | undefined;
   if (options.agent && options.agent.length > 0) {
-    const validAgents = Object.keys(agents);
-    const invalidAgents = options.agent.filter((a) => !validAgents.includes(a));
+    const invalidAgents = getInvalidAgentNames(options.agent);
 
     if (invalidAgents.length > 0) {
       console.log(`${YELLOW}Invalid agents: ${invalidAgents.join(', ')}${RESET}`);
-      console.log(`${DIM}Valid agents: ${validAgents.join(', ')}${RESET}`);
+      console.log(`${DIM}Valid agents: ${getValidAgentNames().join(', ')}${RESET}`);
       process.exit(1);
     }
 
-    agentFilter = options.agent as AgentType[];
+    agentFilter = options.agent.includes('*') ? undefined : (options.agent as AgentType[]);
   }
 
   const installedSkills = await listInstalledSkills({

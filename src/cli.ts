@@ -127,6 +127,7 @@ ${BOLD}Updates:${RESET}
 ${BOLD}Update Options:${RESET}
   -g, --global           Update global skills only
   -p, --project          Update project skills only
+  -a, --agent <agents>   Override update targets (use '*' for all agents)
   -y, --yes              Skip scope prompt (auto-detect: project if in a project, else global)
 
 ${BOLD}Project:${RESET}

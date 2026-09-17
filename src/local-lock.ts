@@ -1,6 +1,7 @@
 import { readFile, writeFile, readdir, stat } from 'fs/promises';
 import { isAbsolute, join, relative, resolve, sep } from 'path';
 import { createHash } from 'crypto';
+import type { AgentType } from './types.ts';
 
 const LOCAL_LOCK_FILE = 'skills-lock.json';
 const CURRENT_VERSION = 1;
@@ -42,6 +43,8 @@ export interface LocalSkillLockEntry {
    * non-Eve installs and for plain Eve root installs (treated as `['']`).
    */
   subagents?: string[];
+  /** Effective agent targets used for this project install; absent on legacy entries. */
+  agents?: AgentType[];
   wellKnownDigest?: string;
 }
 
