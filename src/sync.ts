@@ -15,6 +15,12 @@ import {
 import { searchMultiselect } from './prompts/search-multiselect.ts';
 import { addSkillToLocalLock, computeSkillFolderHash, readLocalLock } from './local-lock.ts';
 import type { Skill, AgentType } from './types.ts';
+import {
+  collectAgentValues,
+  expandAgentValues,
+  getEffectiveAgentTargets,
+  getInvalidAgentNames,
+} from './agent-options.ts';
 import { track } from './telemetry.ts';
 import { detectAgent, getAgentType } from './detect-agent.ts';
 
@@ -134,6 +140,13 @@ async function discoverNodeModuleSkills(
 export async function runSync(args: string[], options: SyncOptions = {}): Promise<void> {
   const cwd = process.cwd();
 
+  // Capture command-line intent before agent-context detection populates
+  // options.agent with automatic defaults, so an explicitly targeted
+  // non-universal agent still creates its project root (mirrors add).
+  const explicitlySelectedAgents = new Set<AgentType>(
+    options.agent?.includes('*') ? [] : ((options.agent as AgentType[] | undefined) ?? [])
+  );
+
   // Auto-enable non-interactive mode when running inside an AI agent
   const agentResult = await detectAgent();
   if (agentResult.isAgent) {
@@ -231,16 +244,16 @@ export async function runSync(args: string[], options: SyncOptions = {}): Promis
   const visibleUniversalAgents = getVisibleUniversalAgents();
 
   if (options.agent?.includes('*')) {
-    targetAgents = validAgents as AgentType[];
+    targetAgents = expandAgentValues(options.agent);
     p.log.info(`Installing to all ${targetAgents.length} agents`);
   } else if (options.agent && options.agent.length > 0) {
-    const invalidAgents = options.agent.filter((a) => !validAgents.includes(a));
+    const invalidAgents = getInvalidAgentNames(options.agent);
     if (invalidAgents.length > 0) {
       p.log.error(`Invalid agents: ${invalidAgents.join(', ')}`);
       p.log.info(`Valid agents: ${validAgents.join(', ')}`);
       process.exit(1);
     }
-    targetAgents = options.agent as AgentType[];
+    targetAgents = expandAgentValues(options.agent);
   } else {
     spinner.start('Loading agents…');
     const installedAgents = await detectInstalledAgents();
@@ -280,6 +293,7 @@ export async function runSync(args: string[], options: SyncOptions = {}): Promis
         }
 
         targetAgents = selected as AgentType[];
+        for (const agent of targetAgents) explicitlySelectedAgents.add(agent);
       }
     } else if (installedAgents.length === 1 || options.yes) {
       // Ensure universal agents are included
@@ -318,6 +332,7 @@ export async function runSync(args: string[], options: SyncOptions = {}): Promis
       }
 
       targetAgents = selected as AgentType[];
+      for (const agent of targetAgents) explicitlySelectedAgents.add(agent);
     }
   }
 
@@ -348,10 +363,12 @@ export async function runSync(args: string[], options: SyncOptions = {}): Promis
   const results: Array<{
     skill: string;
     packageName: string;
+    agentType: AgentType;
     agent: string;
     success: boolean;
     path: string;
     canonicalPath?: string;
+    skipped?: boolean;
     error?: string;
   }> = [];
 
@@ -361,14 +378,17 @@ export async function runSync(args: string[], options: SyncOptions = {}): Promis
         global: false,
         cwd,
         mode: 'symlink',
+        createMissingAgentRoot: explicitlySelectedAgents.has(agent),
       });
       results.push({
         skill: skill.name,
         packageName: skill.packageName,
+        agentType: agent,
         agent: agents[agent].displayName,
         success: result.success,
         path: result.path,
         canonicalPath: result.canonicalPath,
+        skipped: result.skipped,
         error: result.error,
       });
     }
@@ -385,12 +405,16 @@ export async function runSync(args: string[], options: SyncOptions = {}): Promis
     if (successfulSkillNames.has(skill.name)) {
       try {
         const computedHash = await computeSkillFolderHash(skill.path);
+        const effectiveAgents = getEffectiveAgentTargets(
+          results.filter((result) => result.skill === skill.name)
+        );
         await addSkillToLocalLock(
           skill.name,
           {
             source: skill.packageName,
             sourceType: 'node_modules',
             computedHash,
+            ...(effectiveAgents.length > 0 && { agents: effectiveAgents }),
           },
           cwd
         );
@@ -462,15 +486,9 @@ export function parseSyncOptions(args: string[]): { options: SyncOptions } {
     } else if (arg === '-f' || arg === '--force') {
       options.force = true;
     } else if (arg === '-a' || arg === '--agent') {
-      options.agent = options.agent || [];
-      i++;
-      let nextArg = args[i];
-      while (i < args.length && nextArg && !nextArg.startsWith('-')) {
-        options.agent.push(nextArg);
-        i++;
-        nextArg = args[i];
-      }
-      i--;
+      const parsed = collectAgentValues(args, i);
+      options.agent = [...(options.agent || []), ...parsed.values];
+      i = parsed.endIndex;
     }
   }
 

@@ -202,12 +202,16 @@ npx skills update -p
 
 # Non-interactive (auto-detects scope: project if in a project, else global)
 npx skills update -y
+
+# Update project skills only in the canonical universal directory
+npx skills update -p --agent universal -y
 ```
 
 | Option          | Description                                                               |
 | --------------- | ------------------------------------------------------------------------- |
 | `-g, --global`  | Only update global skills                                                 |
 | `-p, --project` | Only update project skills                                                |
+| `-a, --agent <agents...>` | Override update targets (`universal`, `pi`, or `*`)                 |
 | `-y, --yes`     | Skip scope prompt (auto-detect: project if in a project dir, else global) |
 | `[skills...]`   | Update specific skills by name instead of all                             |
 
