@@ -53,7 +53,7 @@ jobs:
 
       - name: version and publish
         if: github.event_name != 'workflow_dispatch' || inputs.dry_run != true
-        run: pnpm run tegami ci
+        run: pnpm run release:check && pnpm run tegami ci
         env:
           GITHUB_TOKEN: ${{ github.token }}
 

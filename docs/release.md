@@ -68,9 +68,22 @@ gh release view "v$(node -p 'require("./package.json").version')"
 If a publish job fails partway through, fix the cause and re-run the same workflow. The publish lock
 makes retries safe.
 
+## Emergency local publish
+
+GitHub Actions is the default publish path. Publish from a laptop only when Actions cannot. From a
+clean, current `main` with npm 2FA and GitHub CLI authentication:
+
+```sh
+npm whoami
+GH_TOKEN="$(gh auth token)" pnpm run release
+```
+
+`pnpm run release` runs `release:check` and then `tegami publish`. Restore CI as the default path
+after the emergency publish succeeds.
+
 ## Local scripts
 
 - `pnpm run tegami` — queue a changelog entry.
 - `pnpm run version:packages` — draft version changes locally.
 - `pnpm run release:check` — type-check, build, test, and format check.
-- `pnpm run release` — `release:check` then `tegami publish` (emergency local publish).
+- `pnpm run release` — emergency local publish (see above).
