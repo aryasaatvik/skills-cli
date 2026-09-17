@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { execFileSync } from 'child_process';
-import { existsSync, rmSync, mkdirSync, writeFileSync, lstatSync } from 'fs';
+import { existsSync, rmSync, mkdirSync, writeFileSync, lstatSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { runCli, stripAnsi } from './test-utils.ts';
@@ -153,6 +153,35 @@ description: A Kiro test skill
     );
     expect(existsSync(join(projectDir, '.agents', 'skills', 'kiro-skill'))).toBe(true);
     expect(result.stdout).toContain('symlinked: Kiro CLI');
+  });
+
+  it('records an explicit universal project target without creating a Pi link', () => {
+    const sourceDir = join(testDir, 'source');
+    const skillDir = join(sourceDir, 'skills', 'universal-skill');
+    mkdirSync(skillDir, { recursive: true });
+    writeFileSync(
+      join(skillDir, 'SKILL.md'),
+      `---
+name: universal-skill
+description: A universal test skill
+---
+
+# Universal Skill
+`
+    );
+
+    const projectDir = join(testDir, 'project');
+    mkdirSync(projectDir, { recursive: true });
+    const result = runCli(
+      ['add', sourceDir, '-y', '--agent', 'universal'],
+      projectDir,
+      noDetectedAgentEnv
+    );
+
+    expect(result.exitCode).toBe(0);
+    const lock = JSON.parse(readFileSync(join(projectDir, 'skills-lock.json'), 'utf-8'));
+    expect(lock.skills['universal-skill'].agents).toEqual(['universal']);
+    expect(existsSync(join(projectDir, '.pi', 'skills', 'universal-skill'))).toBe(false);
   });
 
   it('reports a skipped project symlink for an automatically selected agent', () => {

@@ -11,6 +11,7 @@ import { getGitHubToken } from './skill-lock.ts';
 import { discoverSkills, filterSkills, getSkillDisplayName } from './skills.ts';
 import { getOwnerRepo, parseSource } from './source-parser.ts';
 import type { AgentType, Skill } from './types.ts';
+import { collectAgentValues, getInvalidAgentNames, getValidAgentNames } from './agent-options.ts';
 import { downloadSource } from './download-source.ts';
 import {
   wellKnownProvider,
@@ -112,19 +113,12 @@ export function parseUseOptions(args: string[]): ParseUseOptionsResult {
         i++;
       }
     } else if (arg === '--agent' || arg === '-a') {
-      options.agent = options.agent || [];
-      i++;
-      let nextArg = args[i];
-      const startCount = options.agent.length;
-      while (i < args.length && nextArg && !nextArg.startsWith('-')) {
-        options.agent.push(nextArg);
-        i++;
-        nextArg = args[i];
-      }
-      if (options.agent.length === startCount) {
+      const parsed = collectAgentValues(args, i);
+      options.agent = [...(options.agent || []), ...parsed.values];
+      i = parsed.endIndex;
+      if (parsed.values.length === 0) {
         errors.push(`${arg} requires an agent name`);
       }
-      i--;
     } else if (arg.startsWith('-')) {
       errors.push(`Unknown option: ${arg}`);
     } else {
@@ -513,10 +507,7 @@ function validateUseAgentOption(agentValues: string[] | undefined): string[] {
   if (!agentValues || agentValues.length === 0) return [];
 
   const errors: string[] = [];
-  const validAgents = Object.keys(agents);
-  const invalidAgents = agentValues.filter(
-    (agent) => agent !== '*' && !validAgents.includes(agent)
-  );
+  const invalidAgents = getInvalidAgentNames(agentValues);
 
   if (agentValues.includes('*')) {
     errors.push("skills use --agent does not support '*'; specify exactly one agent.");
@@ -526,7 +517,7 @@ function validateUseAgentOption(agentValues: string[] | undefined): string[] {
   }
   if (invalidAgents.length > 0) {
     errors.push(
-      `Invalid agents: ${invalidAgents.join(', ')}\nValid agents: ${validAgents.join(', ')}`
+      `Invalid agents: ${invalidAgents.join(', ')}\nValid agents: ${getValidAgentNames().join(', ')}`
     );
   }
 

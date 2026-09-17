@@ -10,6 +10,12 @@ import { readLocalLock, removeSkillFromLocalLock } from './local-lock.ts';
 import { hasSkillMd } from './skills.ts';
 import type { AgentType } from './types.ts';
 import {
+  collectAgentValues,
+  expandAgentValues,
+  getInvalidAgentNames,
+  getValidAgentNames,
+} from './agent-options.ts';
+import {
   getInstallPath,
   getCanonicalPath,
   getCanonicalSkillsDir,
@@ -165,12 +171,11 @@ export async function removeCommand(skillNames: string[], options: RemoveOptions
 
   // Validate agent options BEFORE prompting for skill selection
   if (options.agent && options.agent.length > 0) {
-    const validAgents = Object.keys(agents);
-    const invalidAgents = options.agent.filter((a) => !validAgents.includes(a));
+    const invalidAgents = getInvalidAgentNames(options.agent);
 
     if (invalidAgents.length > 0) {
       p.log.error(`Invalid agents: ${invalidAgents.join(', ')}`);
-      p.log.info(`Valid agents: ${validAgents.join(', ')}`);
+      p.log.info(`Valid agents: ${getValidAgentNames().join(', ')}`);
       process.exit(1);
     }
   }
@@ -208,7 +213,7 @@ export async function removeCommand(skillNames: string[], options: RemoveOptions
 
   let targetAgents: AgentType[];
   if (options.agent && options.agent.length > 0) {
-    targetAgents = options.agent as AgentType[];
+    targetAgents = expandAgentValues(options.agent);
   } else {
     // When removing, we should target all known agents to ensure
     // ghost symlinks are cleaned up, even if the agent is not detected.
@@ -423,15 +428,9 @@ export function parseRemoveOptions(args: string[]): { skills: string[]; options:
       }
       i--; // Back up one since the loop will increment
     } else if (arg === '-a' || arg === '--agent') {
-      options.agent = options.agent || [];
-      i++;
-      let nextArg = args[i];
-      while (i < args.length && nextArg && !nextArg.startsWith('-')) {
-        options.agent.push(nextArg);
-        i++;
-        nextArg = args[i];
-      }
-      i--; // Back up one since the loop will increment
+      const parsed = collectAgentValues(args, i);
+      options.agent = [...(options.agent || []), ...parsed.values];
+      i = parsed.endIndex;
     } else if (arg && !arg.startsWith('-')) {
       skills.push(arg);
     }

@@ -120,6 +120,7 @@ Instructions.
       expect(lock.skills['lock-test-skill'].source).toBe('my-pkg');
       expect(lock.skills['lock-test-skill'].sourceType).toBe('node_modules');
       expect(lock.skills['lock-test-skill'].computedHash).toMatch(/^[a-f0-9]{64}$/);
+      expect(lock.skills['lock-test-skill'].agents).toEqual(['claude-code']);
     });
 
     it('should not have timestamps in lock entries', () => {
