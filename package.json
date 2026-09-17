@@ -27,6 +27,11 @@
     "prepare": "husky",
     "test": "vitest",
     "type-check": "tsc --noEmit",
+    "tegami": "node scripts/tegami.ts",
+    "version:packages": "pnpm run tegami version",
+    "release:check": "pnpm type-check && pnpm build && pnpm exec vitest run && pnpm format:check",
+    "release:pretrust": "pnpm run tegami npm pretrust",
+    "release": "pnpm run release:check && pnpm run tegami publish",
     "publish:snapshot": "npm version prerelease --preid=snapshot --no-git-tag-version && npm publish --tag snapshot"
   },
   "lint-staged": {
@@ -140,6 +145,7 @@
     "picocolors": "^1.1.1",
     "prettier": "^3.8.1",
     "simple-git": "^3.36.0",
+    "tegami": "^1.5.0",
     "typescript": "^5.9.3",
     "vitest": "^4.0.17",
     "xdg-basedir": "^5.1.0"

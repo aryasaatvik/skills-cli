@@ -152,15 +152,27 @@ pnpm format:check
 
 CI will fail if code is not properly formatted.
 
-## Publishing
+## Release Strategy
 
-```bash
-# 1. Bump version in package.json
-# 2. Build
-pnpm build
-# 3. Publish
-npm publish
-```
+- npm package: `@aryasaatvik/skills`
+- Releases run from the `main` branch GitHub Action with Tegami and npm trusted publishing; local
+  sessions only prepare or verify releases.
+- Tags are versioned as `vX.Y.Z`.
+- Add user-facing release notes under `.tegami/` and commit them with the implementation they
+  describe.
+- `pnpm run version:packages` consumes pending entries, updates the package version and
+  `CHANGELOG.md`, writes the publish lock, and opens or updates `tegami/version-packages` against
+  `main`.
+- After the version pull request is merged, `.github/workflows/release.yml` runs the release checks,
+  then `pnpm run tegami ci` publishes through npm OIDC, pushes the matching `v<version>` tag, and
+  creates the GitHub Release.
+- The npm trusted publisher is `aryasaatvik/skills-cli` + `release.yml` with no environment; no
+  `NPM_TOKEN` is used.
+- Configure the trusted publisher once with `pnpm run release:pretrust` (new packages) or the npm
+  package settings (existing packages).
+- See `docs/release.md` for the workflow and verification procedure.
+- `.github/workflows/publish.yml` is the upstream vercel-labs manual workflow; the fork's release
+  path is `release.yml`.
 
 ## Adding a New Agent
 
