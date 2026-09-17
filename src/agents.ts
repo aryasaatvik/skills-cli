@@ -1,12 +1,13 @@
 import { homedir } from 'os';
 import { join } from 'path';
 import { existsSync, readFileSync, readdirSync } from 'fs';
-import { xdgConfig } from 'xdg-basedir';
 import type { AgentConfig, AgentType } from './types.ts';
 
 const home = homedir();
-// Use xdg-basedir (not env-paths) to match OpenCode/Amp/Goose behavior on all platforms.
-const configHome = xdgConfig ?? join(home, '.config');
+// Match OpenCode/Amp/Goose XDG behavior: $XDG_CONFIG_HOME when set, otherwise
+// $HOME/.config. Computed here rather than via xdg-basedir, which snapshots
+// os.homedir() at its own import time and can disagree with the live $HOME.
+const configHome = process.env.XDG_CONFIG_HOME?.trim() || join(home, '.config');
 const codexHome = process.env.CODEX_HOME?.trim() || join(home, '.codex');
 const claudeHome = process.env.CLAUDE_CONFIG_DIR?.trim() || join(home, '.claude');
 const vibeHome = process.env.VIBE_HOME?.trim() || join(home, '.vibe');
