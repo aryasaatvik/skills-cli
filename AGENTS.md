@@ -25,25 +25,48 @@ Aliases: `skills a` works for `add`. `skills i`, `skills install` (no args) rest
 
 ```
 src/
-├── cli.ts           # Main entry point, command routing, init/check/update
+├── cli.ts           # Main entry point, command routing
 ├── cli.test.ts      # CLI tests
 ├── add.ts           # Core add command logic
 ├── add-prompt.test.ts # Add prompt behavior tests
 ├── add.test.ts      # Add command tests
-├── constants.ts      # Shared constants
-├── find.ts           # Find/search command
+├── install.ts       # Restore skills from skills-lock.json
+├── update.ts        # Update command - hash compare + reinstall
+├── update-source.ts # Source URL/ref helpers for updates
+├── update-source.test.ts
+├── use.ts           # Use command - generate a skill prompt or launch an agent
+├── use.test.ts      # Use command tests
+├── find.ts          # Find/search command
+├── find.test.ts     # Find command tests
 ├── list.ts          # List installed skills command
 ├── list.test.ts     # List command tests
-├── remove.ts         # Remove command implementation
-├── remove.test.ts    # Remove command tests
+├── remove.ts        # Remove command implementation
+├── remove.test.ts   # Remove command tests
+├── parse-remove-options.test.ts
+├── sync.ts          # Sync command - crawl node_modules for skills
+├── constants.ts     # Shared constants
 ├── agents.ts        # Agent definitions and detection
+├── agent-options.ts # --agent flag parsing
+├── agent-options.test.ts
+├── detect-agent.ts  # Runtime agent detection
+├── detect-agent.test.ts
 ├── installer.ts     # Skill installation logic (symlink/copy) + listInstalledSkills
 ├── skills.ts        # Skill discovery and parsing
 ├── skill-lock.ts    # Global lock file management (~/.agents/.skill-lock.json)
+├── skill-lock.test.ts
 ├── local-lock.ts    # Local lock file management (skills-lock.json, checked in)
-├── sync.ts          # Sync command - crawl node_modules for skills
+├── skill-relocation.ts # Resolve locked skills that moved on disk
+├── skill-relocation.test.ts
 ├── source-parser.ts # Parse git URLs, GitHub shorthand, local paths
+├── source-parser.test.ts
 ├── git.ts           # Git clone operations
+├── git.test.ts
+├── github-host.ts   # GH_HOST handling for clone/API URLs
+├── blob.ts          # Blob-based skill download (skills.sh + GitHub trees)
+├── download-source.ts # tar/zip download + extract
+├── archive.ts       # Zip archive reading/validation
+├── frontmatter.ts   # YAML frontmatter parsing for SKILL.md
+├── sanitize.ts      # Strip terminal escapes from untrusted strings
 ├── telemetry.ts     # Anonymous usage tracking
 ├── types.ts         # TypeScript types
 ├── plugin-manifest.ts # Plugin manifest discovery support
@@ -55,9 +78,8 @@ src/
 │   ├── types.ts
 │   └── wellknown.ts
 ├── init.test.ts     # Init command tests
-├── use.ts           # Use command - generate a skill prompt or launch an agent
-├── use.test.ts      # Use command tests
-└── test-utils.ts    # Test utilities
+├── test-utils.ts    # Test utilities
+└── test-utils.test.ts
 
 tests/
 ├── cross-platform-paths.test.ts # Path normalization across platforms
