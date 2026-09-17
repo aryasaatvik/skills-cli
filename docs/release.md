@@ -5,8 +5,8 @@ publication, Git tags, and GitHub Releases. Releases run through GitHub Actions 
 publishing. Only the Tegami workflows are active in this fork; the upstream `ci.yml` and `agents.yml`
 are disabled (manual `workflow_dispatch`).
 
-`.github/workflows/prepare-release.yml` drafts the release: on its nightly schedule or a manual
-dispatch it runs `pnpm run tegami version`, which opens or updates a Version Packages pull request
+`.github/workflows/prepare-release.yml` drafts the release: on a manual dispatch it runs
+`pnpm run tegami version`, which opens or updates a Version Packages pull request
 when `.tegami/` has pending changelog files and writes `.tegami/publish-lock.yaml`. Merging that pull
 request is the human gate, and the merge triggers `.github/workflows/publish.yml`, which runs
 `pnpm run tegami ci` to publish from the lock. Ordinary pushes to `main` do **not** publish. Do not
@@ -37,8 +37,8 @@ packages:
 Describe the user-visible result.
 ```
 
-Commit the changelog entry with the implementation that it describes. The nightly Prepare release
-run, or a manual dispatch of it, opens the Version Packages pull request.
+Commit the changelog entry with the implementation that it describes. Dispatching the Prepare
+release workflow opens the Version Packages pull request.
 
 ## Version Packages pull request
 

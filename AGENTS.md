@@ -160,7 +160,7 @@ CI will fail if code is not properly formatted.
   (`workflow_dispatch` only). Run them manually when needed.
 - Add user-facing release notes under `.tegami/` and commit them with the implementation they
   describe.
-- `.github/workflows/prepare-release.yml` runs nightly (and on manual dispatch) to draft versions,
+- `.github/workflows/prepare-release.yml` runs on manual dispatch to draft versions,
   writing `.tegami/publish-lock.yaml` and opening or updating `tegami/version-packages` against
   `main`. Merging that pull request is the human gate.
 - The merge triggers `.github/workflows/publish.yml`, which runs `pnpm run tegami ci` to publish
