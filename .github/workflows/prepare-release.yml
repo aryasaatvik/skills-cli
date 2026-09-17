@@ -1,8 +1,6 @@
 name: prepare release
 
 on:
-  schedule:
-    - cron: "0 13 * * *"
   workflow_dispatch:
 
 permissions:
