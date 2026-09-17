@@ -15,13 +15,18 @@ import { afterAll } from 'vitest';
  * home — where, untreated, remove/`--all` tests can wipe a curated skill set
  * (and `~/.agents` is frequently a git repo, so the churn is even noisier).
  *
- * XDG base dirs are intentionally left untouched: when unset they resolve to
- * `$HOME`-relative paths (so they follow the sandbox), and
- * tests/xdg-config-paths.test.ts sets/clears `XDG_STATE_HOME` itself.
+ * XDG base dirs must be redirected too: GitHub-hosted runners export
+ * `XDG_CONFIG_HOME`, so leaving them unset would resolve in-process agents to
+ * the real `~/.config` instead of the sandbox. The values mirror
+ * `createTestHomeEnvironment` in src/test-utils.ts.
  */
 const sandboxHome = mkdtempSync(join(tmpdir(), 'skills-test-home-'));
 process.env.HOME = sandboxHome;
 process.env.USERPROFILE = sandboxHome; // Windows equivalent
+process.env.XDG_CONFIG_HOME = join(sandboxHome, '.config');
+process.env.XDG_DATA_HOME = join(sandboxHome, '.local', 'share');
+process.env.XDG_STATE_HOME = join(sandboxHome, '.local', 'state');
+process.env.XDG_CACHE_HOME = join(sandboxHome, '.cache');
 
 afterAll(() => {
   try {
