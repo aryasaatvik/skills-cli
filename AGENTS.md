@@ -152,15 +152,28 @@ pnpm format:check
 
 CI will fail if code is not properly formatted.
 
-## Publishing
+## Release Strategy
 
-```bash
-# 1. Bump version in package.json
-# 2. Build
-pnpm build
-# 3. Publish
-npm publish
-```
+- npm package: `@aryasaatvik/skills`. Releases use Tegami and npm trusted publishing.
+- Tags are versioned as `vX.Y.Z`.
+- Only the Tegami workflows are active; the upstream `ci.yml` and `agents.yml` are disabled
+  (`workflow_dispatch` only). Run them manually when needed.
+- Add user-facing release notes under `.tegami/` and commit them with the implementation they
+  describe.
+- `.github/workflows/prepare-release.yml` runs nightly (and on manual dispatch) to draft versions,
+  writing `.tegami/publish-lock.yaml` and opening or updating `tegami/version-packages` against
+  `main`. Merging that pull request is the human gate.
+- The merge triggers `.github/workflows/publish.yml`, which runs `pnpm run tegami ci` to publish
+  through npm OIDC, push the matching `v<version>` tag, and create the GitHub Release. Ordinary
+  pushes to `main` do not publish.
+- Do not auto-merge the Version Packages pull request with `GITHUB_TOKEN`; its commits will not
+  trigger `publish.yml`.
+- The npm trusted publisher is `aryasaatvik/skills-cli` + `publish.yml` with no environment; no
+  `NPM_TOKEN` is used. Configure it once with `pnpm run release:pretrust` (new packages) or the npm
+  package settings (existing packages).
+- Release-relevant pull requests get a release plan comment from `release-plan.yml` and
+  `release-plan-comment.yml`; preview locally with `pnpm run tegami pr preview`.
+- See `docs/release.md` for the workflow and verification procedure.
 
 ## Adding a New Agent
 
