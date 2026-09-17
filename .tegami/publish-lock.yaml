@@ -1,0 +1,11 @@
+core:changelogs:
+  - content: "---\npackages:\n  \"@aryasaatvik/skills\":\n    type: minor\n---\n\n## Preserve project agent targets\n\n`skills add` and `skills experimental_sync` now record each project skill's effective agent\ndestinations in `skills-lock.json`, and `skills update` reuses them. A skill installed only to the\ncanonical `.agents/skills` directory is no longer re-linked into agent-specific directories such as\n`.pi/skills` by update auto-detection.\n\n`skills update --agent <agents...>` overrides the recorded targets for a run; global `--agent`\nremains a one-shot override. `skills experimental_sync --agent <non-universal>` now creates and\nrecords the explicitly selected agent's project link instead of dropping it.\n"
+    filename: 2026-09-17-project-agent-targets.md
+    v: 0.0.0
+core:packages:
+  - changelogIds:
+      - 2026-09-17-project-agent-targets.md
+    id: npm:@aryasaatvik/skills
+    updated: true
+npm:packages:
+  - id: npm:@aryasaatvik/skills
