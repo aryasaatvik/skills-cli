@@ -1,13 +1,8 @@
 name: Agents CI
 
+# Disabled in the fork: run manually when the agent registry changes.
 on:
-  pull_request:
-    paths:
-      - "src/agents.ts"
-  push:
-    branches: [main]
-    paths:
-      - "src/agents.ts"
+  workflow_dispatch:
 
 concurrency:
   group: agents-${{ github.ref }}
