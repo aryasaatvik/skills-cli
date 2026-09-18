@@ -28,7 +28,12 @@ import { sanitizeMetadata } from './sanitize.ts';
 import { track } from './telemetry.ts';
 import { agents, isUniversalAgent } from './agents.ts';
 import type { AgentType } from './types.ts';
-import { collectAgentValues, getInvalidAgentNames, getValidAgentNames } from './agent-options.ts';
+import {
+  collectAgentValues,
+  getInvalidAgentNames,
+  getValidAgentNames,
+  normalizeAgentTargets,
+} from './agent-options.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -822,25 +827,35 @@ export async function updateProjectSkills(
   }
 
   const cwd = process.cwd();
-  const targetAgentNames: string[] = [];
-  let hasUniversal = false;
 
+  // Targets actually used for reinstalls: an explicit --agent override wins,
+  // otherwise the agents recorded in skills-lock.json. Only fall back to scanning
+  // the project's agent directories for legacy entries that predate recorded targets.
+  const detectedTargets: AgentType[] = [];
   for (const [type, config] of Object.entries(agents)) {
     if (isUniversalAgent(type as AgentType)) {
-      if (!hasUniversal && existsSync(join(cwd, '.agents'))) {
-        hasUniversal = true;
-      }
+      if (existsSync(join(cwd, '.agents'))) detectedTargets.push(type as AgentType);
     } else {
       const agentRoot = config.skillsDir.split('/')[0]!;
-      if (existsSync(join(cwd, agentRoot))) {
-        targetAgentNames.push(config.displayName);
-      }
+      if (existsSync(join(cwd, agentRoot))) detectedTargets.push(type as AgentType);
     }
   }
 
-  const targetParts: string[] = [];
-  if (hasUniversal) targetParts.push('Universal');
-  targetParts.push(...targetAgentNames);
+  const effectiveTargets = new Set<AgentType>();
+  const override = options.agent as AgentType[] | undefined;
+  const collectTargets = (recorded?: AgentType[]) => {
+    for (const target of override ?? recorded ?? detectedTargets) {
+      effectiveTargets.add(target);
+    }
+  };
+  for (const skill of updatable) collectTargets(skill.entry.agents);
+  for (const group of wellKnownGroups.values()) {
+    for (const item of group) collectTargets(item.agents);
+  }
+
+  const targetParts = normalizeAgentTargets([...effectiveTargets]).map(
+    (type) => agents[type]?.displayName ?? type
+  );
 
   if (targetParts.length > 0) {
     console.log(`${TEXT}Updating for: ${targetParts.join(', ')}${RESET}`);
