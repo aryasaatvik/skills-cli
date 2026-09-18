@@ -163,12 +163,12 @@ CI will fail if code is not properly formatted.
 - `.github/workflows/prepare-release.yml` runs on manual dispatch to draft versions,
   writing `.tegami/publish-lock.yaml` and opening or updating `tegami/version-packages` against
   `main`. Merging that pull request is the human gate.
-- The merge triggers `.github/workflows/publish.yml`, which runs `pnpm run tegami ci` to publish
+- The merge triggers `.github/workflows/publish.yaml`, which runs `pnpm run tegami ci` to publish
   through npm OIDC, push the matching `v<version>` tag, and create the GitHub Release. Ordinary
   pushes to `main` do not publish.
 - Do not auto-merge the Version Packages pull request with `GITHUB_TOKEN`; its commits will not
-  trigger `publish.yml`.
-- The npm trusted publisher is `aryasaatvik/skills-cli` + `publish.yml` with no environment; no
+  trigger `publish.yaml`.
+- The npm trusted publisher is `aryasaatvik/skills-cli` + `publish.yaml` with no environment; no
   `NPM_TOKEN` is used. Configure it once with `pnpm run release:pretrust` (new packages) or the npm
   package settings (existing packages).
 - Release-relevant pull requests get a release plan comment from `release-plan.yml` and
