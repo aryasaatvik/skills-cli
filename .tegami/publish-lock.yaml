@@ -1,0 +1,15 @@
+core:changelogs:
+  - content: "---\npackages:\n  \"@aryasaatvik/skills\":\n    type: patch\n---\n\n## Notion skills\n\n`skills add notion` installs skills from Notion. It lists the skill packs available to the\nauthenticated Notion account so you can choose, and `skills add https://notion.so/<skill-page>`\ninstalls the skill on a specific Notion page. Notion sources are prepared through the `ntn` CLI and a\ntemporary download step, then run through the normal install, agent-target, and lock flow.\n"
+    filename: 2026-09-18-notion-skills.md
+    v: 0.0.0
+  - content: "---\npackages:\n  \"@aryasaatvik/skills\":\n    type: patch\n---\n\n## Accurate `skills update` target line\n\n`skills update` now reports the agent targets it will actually use — the `--agent` override, or the\ntargets recorded in `skills-lock.json` — instead of listing every agent directory that happens to\nexist in the project. A project with a Pi extension but `universal`/`claude-code` recorded targets no\nlonger falsely prints Pi.\n"
+    filename: 2026-09-18-update-targets-message.md
+    v: 0.0.0
+core:packages:
+  - changelogIds:
+      - 2026-09-18-notion-skills.md
+      - 2026-09-18-update-targets-message.md
+    id: npm:@aryasaatvik/skills
+    updated: true
+npm:packages:
+  - id: npm:@aryasaatvik/skills
