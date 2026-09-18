@@ -8,7 +8,6 @@ on:
       - "package.json"
       - "pnpm-lock.yaml"
       - "scripts/tegami.ts"
-      - "src/**"
 
 permissions:
   contents: read
