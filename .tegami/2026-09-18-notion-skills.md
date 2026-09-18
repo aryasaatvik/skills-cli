@@ -1,6 +1,6 @@
 ---
 packages:
-  "@aryasaatvik/skills": minor
+  "@aryasaatvik/skills": patch
 ---
 
 ## Notion skills
