@@ -8,14 +8,14 @@ are disabled (manual `workflow_dispatch`).
 `.github/workflows/prepare-release.yml` drafts the release: on a manual dispatch it runs
 `pnpm run tegami version`, which opens or updates a Version Packages pull request
 when `.tegami/` has pending changelog files and writes `.tegami/publish-lock.yaml`. Merging that pull
-request is the human gate, and the merge triggers `.github/workflows/publish.yml`, which runs
+request is the human gate, and the merge triggers `.github/workflows/publish.yaml`, which runs
 `pnpm run tegami ci` to publish from the lock. Ordinary pushes to `main` do **not** publish. Do not
 auto-merge the Version Packages pull request with `GITHUB_TOKEN` — GitHub does not re-run workflows
 for commits created by that token, so publish would never start.
 
-Authentication is npm trusted publishing (OIDC). `publish.yml` sets `id-token: write` and does not
+Authentication is npm trusted publishing (OIDC). `publish.yaml` sets `id-token: write` and does not
 use an `NPM_TOKEN`. The package must list GitHub Actions trusted publisher `aryasaatvik/skills-cli`
-with workflow filename `publish.yml` and no environment name. Do not rename `publish.yml`; npm pins
+with workflow filename `publish.yaml` and no environment name. Do not rename `publish.yaml`; npm pins
 that filename.
 
 Pull requests that touch release-relevant paths get a release plan comment from the split
@@ -43,7 +43,7 @@ release workflow opens the Version Packages pull request.
 ## Version Packages pull request
 
 Review the generated version bump, changelog aggregation, lockfile, and `.tegami/publish-lock.yaml`.
-Merge it in the GitHub UI (or with a non-`GITHUB_TOKEN` actor). The merge triggers `publish.yml`,
+Merge it in the GitHub UI (or with a non-`GITHUB_TOKEN` actor). The merge triggers `publish.yaml`,
 which publishes and creates the GitHub Release.
 
 ## First-time trusted publishing
@@ -59,7 +59,7 @@ Configure trusted publishing once before the first OIDC publish:
 ## Verify a publish
 
 ```sh
-gh run list --workflow=publish.yml --limit 5
+gh run list --workflow=publish.yaml --limit 5
 npm view @aryasaatvik/skills version
 npm view @aryasaatvik/skills dist-tags --json
 gh release view "v$(node -p 'require("./package.json").version')"

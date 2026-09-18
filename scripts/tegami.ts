@@ -40,7 +40,7 @@ const release = tegami({
     client: 'pnpm',
     trustedPublish: {
       provider: 'github',
-      workflow: 'publish.yml',
+      workflow: 'publish.yaml',
     },
   },
   packages: {
